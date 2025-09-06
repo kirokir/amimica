@@ -19,13 +19,11 @@ class MimicaApp {
         this.smoother = new Smoother();
         this.actionRecognizer = new ActionRecognizer();
         
-        // State
+        // State & Readiness Flags
         this.pose = null;
         this.lastPoseTime = 0;
         this.isDetecting = false;
         this.settings = this.loadSettings();
-        
-        // Readiness Flags to prevent race conditions
         this.cameraReady = false;
         this.mediaPipeReady = false;
         
@@ -41,7 +39,6 @@ class MimicaApp {
 
     async init() {
         this.setupUI();
-        // Run setup tasks in parallel for faster loading
         await Promise.all([
             this.loadMediaPipe(),
             this.setupCamera()
@@ -155,11 +152,8 @@ class MimicaApp {
             this.poseDetection = new window.Pose({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}` });
             this.poseDetection.setOptions({ modelComplexity: 0, smoothLandmarks: false, enableSegmentation: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
             this.poseDetection.onResults(r => this.onPoseResults(r));
-            
-            // **CRITICAL FIX**: Wait for MediaPipe to finish its own internal setup.
             await this.poseDetection.initialize();
             this.mediaPipeReady = true;
-
         } catch (error) { this.showError('Failed to load pose detection models.'); }
     }
 
@@ -177,7 +171,7 @@ class MimicaApp {
                 this.video.onplaying = () => {
                     this.canvas.width = this.video.videoWidth;
                     this.canvas.height = this.video.videoHeight;
-                    this.cameraReady = true; // Set flag only when video is truly playing
+                    this.cameraReady = true;
                     resolve();
                 };
             });
@@ -194,24 +188,27 @@ class MimicaApp {
             points = points.map((p, i) => (p && results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
             const smoothedPoints = this.smoother.smooth(points);
             this.pose = this.settings.ik ? this.mapper.applyIK(smoothedPoints) : smoothedPoints;
-            if (this.isRecording && this.pose) {
+            
+            if (this.pose) {
                 const actionName = this.actionRecognizer.recognize(this.pose);
-                this.recordedActions.push({
-                    timestamp: Math.round(performance.now() - this.recordingStartTime),
-                    action: actionName,
-                    pose: this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null)
-                });
+                // **NEW**: Update the live action display
+                document.getElementById('action-display').textContent = `Action: ${actionName}`;
+                
+                if (this.isRecording) {
+                    this.recordedActions.push({
+                        timestamp: Math.round(performance.now() - this.recordingStartTime),
+                        action: actionName,
+                        pose: this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null)
+                    });
+                }
             }
         }
     }
 
     async detectPose() {
-        // **CRITICAL FIX**: Guard clause to prevent running before everything is ready.
         if (!this.mediaPipeReady || !this.cameraReady || this.isDetecting || !this.video.videoWidth) { return; }
-        
         const now = performance.now();
         if (now - this.lastPoseTime < 1000 / this.settings.fpsCap) { return; }
-        
         this.isDetecting = true;
         this.lastPoseTime = now;
         try { await this.poseDetection.send({ image: this.video }); } catch (error) { console.error("MediaPipe send failed:", error); this.isDetecting = false; }
