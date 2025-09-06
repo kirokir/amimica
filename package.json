@@ -5,7 +5,7 @@
   "type": "module",
   "main": "index.html",
   "scripts": {
-    "test": "node tests/mapper.test.js && node tests/smoother.test.js",
+    "test": "node --experimental-vm-modules tests/mapper.test.js && node --experimental-vm-modules tests/smoother.test.js",
     "lint": "echo 'Linting not configured yet, skipping.' && exit 0"
   },
   "repository": {
