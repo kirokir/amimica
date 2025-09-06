@@ -3,26 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MIMICA - Real-time Pose Animation</title>
-    <meta name="description" content="Real-time pose detection and stick figure animation using MediaPipe">
+    <title>MIMICA - Real-time Pose & Expression</title>
+    <meta name="description" content="Real-time pose and expression detection and animation using MediaPipe and face-api.js">
     <link rel="stylesheet" href="web-demo/styles.css">
     <link rel="manifest" href="web-demo/manifest.webmanifest">
     <meta name="theme-color" content="#1a1a1a">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     
+    <!-- PWA meta tags -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
+    <!-- Security headers -->
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob:;">
+
+    <!-- NEW: face-api.js Library -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
     <div class="app-container">
         <header class="header">
             <h1>MIMICA <span class="recording-indicator" id="recording-indicator" style="display: none;">● REC</span></h1>
             <div class="stats">
-                <!-- NEW: Live Action Display Area -->
+                <!-- NEW: Live Display Areas -->
+                <span id="expression-display">Expression: --</span>
                 <span id="action-display">Action: --</span>
                 <span id="fps-counter">FPS: --</span>
                 <span id="inference-time">Inference: --ms</span>
@@ -103,6 +109,14 @@
                     </label>
                 </div>
 
+                <!-- NEW: Expression Recognition Toggle -->
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="expression-toggle">
+                        Enable Expression Recognition
+                    </label>
+                </div>
+
                 <div class="control-group">
                     <button id="calibrate-btn" class="btn btn-secondary">Calibrate Pose</button>
                 </div>
@@ -113,7 +127,7 @@
             <p>
                 <a href="https://github.com/kirokir/amimica" target="_blank" rel="noopener">
                     🔗 Repository Seed
-                </a> - made with iaav, by DEAR&CO
+                </a> - made with Laaav, by DEAR&CO
             </p>
         </footer>
     </div>
