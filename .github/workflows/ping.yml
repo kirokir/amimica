@@ -1,0 +1,25 @@
+name: Keep Service Awake
+
+on:
+  schedule:
+    # Run every 10 minutes during active hours (9 AM - 9 PM UTC)
+    - cron: '*/10 9-21 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  ping:
+    name: Ping Target URL
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Ping URL to prevent sleeping
+      run: |
+        if [ -n "${{ secrets.TARGET_URL }}" ]; then
+          echo "Pinging ${{ secrets.TARGET_URL }}"
+          curl -f -s -o /dev/null "${{ secrets.TARGET_URL }}" || echo "Ping failed"
+          echo "Ping completed"
+        else
+          echo "TARGET_URL secret not configured - skipping ping"
+          echo "This workflow is optional and used to keep services awake (e.g., Railway, Heroku)"
+          echo "For static Netlify sites, this workflow is not needed but provided as utility"
+        fi

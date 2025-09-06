@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIMICA - Real-time Pose Animation</title>
+    <meta name="description" content="Real-time pose detection and stick figure animation using MediaPipe">
+    <link rel="stylesheet" href="web-demo/styles.css">
+    <link rel="manifest" href="web-demo/manifest.webmanifest">
+    <meta name="theme-color" content="#1a1a1a">
+    
+    <!-- PWA meta tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MIMICA">
+    
+    <!-- Security headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net;">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>MIMICA</h1>
+            <div class="stats">
+                <span id="fps-counter">FPS: --</span>
+                <span id="inference-time">Inference: --ms</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="video-container">
+                <video id="video" autoplay muted playsinline style="display: none;"></video>
+                <canvas id="canvas"></canvas>
+                <div id="error-message" class="error-message" style="display: none;">
+                    <h3>Camera Access Required</h3>
+                    <p>Please allow camera access to use MIMICA pose detection.</p>
+                    <button id="retry-camera" class="btn btn-primary">Retry Camera Access</button>
+                </div>
+                <div id="loading-message" class="loading-message">
+                    <h3>Loading MIMICA...</h3>
+                    <p>Initializing pose detection models...</p>
+                </div>
+            </div>
+
+            <div class="controls-panel">
+                <div class="control-group">
+                    <label for="resolution-select">Video Resolution:</label>
+                    <select id="resolution-select">
+                        <option value="320x240">320×240 (Recommended)</option>
+                        <option value="640x360">640×360</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="smoothing-slider">Smoothing: <span id="smoothing-value">0.3</span></label>
+                    <input type="range" id="smoothing-slider" min="0" max="1" step="0.1" value="0.3">
+                </div>
+
+                <div class="control-group">
+                    <label for="fps-slider">FPS Cap: <span id="fps-value">15</span></label>
+                    <input type="range" id="fps-slider" min="10" max="60" step="5" value="15">
+                </div>
+
+                <div class="control-group">
+                    <label for="confidence-slider">Confidence Threshold: <span id="confidence-value">0.5</span></label>
+                    <input type="range" id="confidence-slider" min="0" max="1" step="0.1" value="0.5">
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="skeleton-toggle" checked>
+                        Skeleton Mode (vs Filled Character)
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="mirror-toggle" checked>
+                        Mirror Video
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="ik-toggle">
+                        Enable 2-Bone IK
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <button id="calibrate-btn" class="btn btn-secondary">Calibrate Pose</button>
+                </div>
+            </div>
+        </main>
+
+        <div id="install-prompt" class="install-prompt" style="display: none;">
+            <div class="install-content">
+                <h3>Install MIMICA</h3>
+                <p>Add MIMICA to your home screen for the best experience!</p>
+                <div class="install-buttons">
+                    <button id="install-yes" class="btn btn-primary">Install</button>
+                    <button id="install-no" class="btn btn-secondary">Not Now</button>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>
+                <a href="https://github.com/kirokir/MIMICA" target="_blank" rel="noopener">
+                    🔗 Repository Seed
+                </a>
+            </p>
+        </footer>
+    </div>
+
+    <script type="module" src="web-demo/src/app.js"></script>
+</body>
+</html>

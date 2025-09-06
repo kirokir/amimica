@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x, 20.x]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Lint JavaScript
+      run: npm run lint
+      
+    - name: Run unit tests
+      run: npm test
+      
+    - name: Validate HTML
+      run: |
+        # Basic HTML validation
+        node -e "
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          if (!html.includes('<!DOCTYPE html>')) {
+            console.error('Missing DOCTYPE');
+            process.exit(1);
+          }
+          if (!html.includes('manifest.webmanifest')) {
+            console.error('Missing PWA manifest link');
+            process.exit(1);
+          }
+          console.log('HTML validation passed');
+        "
+        
+    - name: Validate PWA manifest
+      run: |
+        node -e "
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('web-demo/manifest.webmanifest', 'utf8'));
+          if (!manifest.name || !manifest.start_url) {
+            console.error('Invalid PWA manifest');
+            process.exit(1);
+          }
+          console.log('PWA manifest validation passed');
+        "
+        
+    - name: Check service worker
+      run: |
+        node -c web-demo/service-worker.js
+        echo "Service worker syntax check passed"
