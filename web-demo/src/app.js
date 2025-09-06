@@ -7,16 +7,27 @@ import { Smoother } from './smoother.js';
 
 class MimicaApp {
     constructor() {
+        // Core elements
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
+        
+        // Modules
         this.renderer = new PoseRenderer(this.ctx);
         this.mapper = new PoseMapper();
         this.smoother = new Smoother();
+        
+        // State
         this.pose = null;
         this.lastPoseTime = 0;
         this.isDetecting = false;
         this.settings = this.loadSettings();
+        
+        // Recording State
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+        this.isRecording = false;
+
         this.init();
     }
 
@@ -28,7 +39,16 @@ class MimicaApp {
     }
 
     loadSettings() {
-        const defaults = { characterMode: 'blocky', resolution: '320x240', smoothing: 0.3, fpsCap: 15, confidence: 0.5, mirror: true, ik: false };
+        const defaults = {
+            characterMode: 'blocky',
+            resolution: '640x360',
+            smoothing: 0.3,
+            fpsCap: 15,
+            confidence: 0.5,
+            mirror: true,
+            ik: false,
+            recordBackground: true // New setting for recording
+        };
         try {
             const saved = JSON.parse(localStorage.getItem('mimica-settings')) || {};
             // Handle migration from old 'skeleton' boolean
@@ -37,34 +57,110 @@ class MimicaApp {
                 delete saved.skeleton;
             }
             return { ...defaults, ...saved };
-        } catch { return defaults; }
+        } catch {
+            return defaults;
+        }
     }
 
-    saveSettings() { try { localStorage.setItem('mimica-settings', JSON.stringify(this.settings)); } catch (e) { console.warn('Could not save settings:', e); } }
+    saveSettings() {
+        try {
+            localStorage.setItem('mimica-settings', JSON.stringify(this.settings));
+        } catch (e) {
+            console.warn('Could not save settings:', e);
+        }
+    }
 
     setupUI() {
         const controls = {
-            'character-mode-select': 'characterMode', 'resolution-select': 'resolution', 
-            'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
-            'confidence-slider': 'confidence', 'mirror-toggle': 'mirror', 'ik-toggle': 'ik'
+            'character-mode-select': 'characterMode',
+            'resolution-select': 'resolution',
+            'smoothing-slider': 'smoothing',
+            'fps-slider': 'fpsCap',
+            'confidence-slider': 'confidence',
+            'mirror-toggle': 'mirror',
+            'ik-toggle': 'ik',
+            'record-background-toggle': 'recordBackground'
         };
+
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
             if (!el) continue;
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
+
             el.addEventListener(isCheckbox ? 'change' : 'input', e => {
                 const value = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
                 this.settings[key] = value;
-                if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = value.toFixed(1);
+                if (id.includes('slider')) {
+                    const valueEl = document.getElementById(id.replace('-slider', '-value'));
+                    if (valueEl) valueEl.textContent = value.toFixed(1);
+                }
                 if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
                 if (key === 'resolution') this.setupCamera();
                 this.saveSettings();
             });
-            if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = this.settings[key].toFixed(1);
+
+            if (id.includes('slider')) {
+                const valueEl = document.getElementById(id.replace('-slider', '-value'));
+                if (valueEl) valueEl.textContent = this.settings[key].toFixed(1);
+            }
         }
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
         document.getElementById('retry-camera').addEventListener('click', () => this.setupCamera());
+        
+        // Recording UI Listeners
+        document.getElementById('record-btn').addEventListener('click', () => {
+            if (this.isRecording) {
+                this.stopRecording();
+            } else {
+                this.startRecording();
+            }
+        });
+    }
+
+    startRecording() {
+        if (!this.canvas) return;
+        this.isRecording = true;
+        this.recordedChunks = [];
+        document.getElementById('download-area').style.display = 'none';
+
+        const stream = this.canvas.captureStream(30); // Capture at 30 FPS
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+
+        this.mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                this.recordedChunks.push(event.data);
+            }
+        };
+
+        this.mediaRecorder.onstop = () => {
+            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const downloadLink = document.getElementById('download-link');
+            downloadLink.href = url;
+            document.getElementById('download-area').style.display = 'block';
+        };
+
+        this.mediaRecorder.start();
+        
+        // Update UI
+        const recordBtn = document.getElementById('record-btn');
+        recordBtn.textContent = 'Stop Recording';
+        recordBtn.classList.add('recording');
+        document.getElementById('recording-indicator').style.display = 'inline';
+    }
+
+    stopRecording() {
+        if (this.mediaRecorder) {
+            this.mediaRecorder.stop();
+        }
+        this.isRecording = false;
+
+        // Update UI
+        const recordBtn = document.getElementById('record-btn');
+        recordBtn.textContent = 'Start Recording';
+        recordBtn.classList.remove('recording');
+        document.getElementById('recording-indicator').style.display = 'none';
     }
 
     async loadMediaPipe() {
@@ -105,7 +201,7 @@ class MimicaApp {
         document.getElementById('inference-time').textContent = `Inference: ${inferenceTime.toFixed(0)}ms`;
         if (results.poseLandmarks) {
             let points = this.mapper.landmarksToPoints(results.poseLandmarks, this.canvas.width, this.canvas.height, this.settings.mirror);
-            points = points.map((p, i) => (results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
+            points = points.map((p, i) => (p && results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
             const smoothedPoints = this.smoother.smooth(points);
             this.pose = this.settings.ik ? this.mapper.applyIK(smoothedPoints) : smoothedPoints;
         }
@@ -120,17 +216,28 @@ class MimicaApp {
     }
 
     render() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.save();
-        if (this.settings.mirror) {
-            this.ctx.scale(-1, 1);
-            this.ctx.translate(-this.canvas.width, 0);
+        // Clear the canvas. If recording animation-only, use a solid color.
+        if (this.isRecording && !this.settings.recordBackground) {
+            this.ctx.fillStyle = '#1a1a1a'; // Match the page background
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        } else {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         }
-        this.ctx.globalAlpha = 0.3;
-        this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.restore();
-        this.ctx.globalAlpha = 1.0;
+
+        // Draw the camera background if not in animation-only recording mode
+        if (!this.isRecording || this.settings.recordBackground) {
+            this.ctx.save();
+            if (this.settings.mirror) {
+                this.ctx.scale(-1, 1);
+                this.ctx.translate(-this.canvas.width, 0);
+            }
+            this.ctx.globalAlpha = 0.3;
+            this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.restore();
+        }
         
+        // Draw the character on top
+        this.ctx.globalAlpha = 1.0;
         if (this.pose) {
             switch (this.settings.characterMode) {
                 case 'skeleton':
