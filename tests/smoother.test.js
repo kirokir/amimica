@@ -137,3 +137,16 @@ test('getPrevious functionality', () => {
         { x: 100, y: 200 },
         { x: 300, y: 400 }
     ];
+    smoother.smooth(points);
+
+    // Get previous values
+    const prevPoint0 = smoother.getPrevious(0);
+    const prevPoint1 = smoother.getPrevious(1);
+
+    assertEqual(prevPoint0.x, 100);
+    assertEqual(prevPoint0.y, 200);
+    assertEqual(prevPoint1.x, 300);
+    assertEqual(prevPoint1.y, 400);
+});
+
+console.log('All smoother tests passed! ✓');
