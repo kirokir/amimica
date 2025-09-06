@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="web-demo/styles.css">
     <link rel="manifest" href="web-demo/manifest.webmanifest">
     <meta name="theme-color" content="#1a1a1a">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
     
     <!-- PWA meta tags -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -45,6 +46,15 @@
 
             <div class="controls-panel">
                 <div class="control-group">
+                    <label for="character-mode-select">Character Mode:</label>
+                    <select id="character-mode-select">
+                        <option value="blocky">Blocky (Animated)</option>
+                        <option value="skeleton">Skeleton</option>
+                        <option value="filled">Filled</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
                     <label for="resolution-select">Video Resolution:</label>
                     <select id="resolution-select">
                         <option value="320x240">320×240 (Recommended)</option>
@@ -69,13 +79,6 @@
 
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="skeleton-toggle" checked>
-                        Skeleton Mode (vs Filled Character)
-                    </label>
-                </div>
-
-                <div class="control-group">
-                    <label>
                         <input type="checkbox" id="mirror-toggle" checked>
                         Mirror Video
                     </label>
@@ -93,18 +96,7 @@
                 </div>
             </div>
         </main>
-
-        <div id="install-prompt" class="install-prompt" style="display: none;">
-            <div class="install-content">
-                <h3>Install MIMICA</h3>
-                <p>Add MIMICA to your home screen for the best experience!</p>
-                <div class="install-buttons">
-                    <button id="install-yes" class="btn btn-primary">Install</button>
-                    <button id="install-no" class="btn btn-secondary">Not Now</button>
-                </div>
-            </div>
-        </div>
-
+        
         <footer class="footer">
             <p>
                 <a href="https://github.com/kirokir/MIMICA" target="_blank" rel="noopener">

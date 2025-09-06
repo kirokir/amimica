@@ -28,9 +28,15 @@ class MimicaApp {
     }
 
     loadSettings() {
-        const defaults = { resolution: '320x240', smoothing: 0.3, fpsCap: 15, confidence: 0.5, skeleton: true, mirror: true, ik: false };
+        const defaults = { characterMode: 'blocky', resolution: '320x240', smoothing: 0.3, fpsCap: 15, confidence: 0.5, mirror: true, ik: false };
         try {
-            return { ...defaults, ...JSON.parse(localStorage.getItem('mimica-settings')) };
+            const saved = JSON.parse(localStorage.getItem('mimica-settings')) || {};
+            // Handle migration from old 'skeleton' boolean
+            if (typeof saved.skeleton !== 'undefined') {
+                saved.characterMode = saved.skeleton ? 'skeleton' : 'filled';
+                delete saved.skeleton;
+            }
+            return { ...defaults, ...saved };
         } catch { return defaults; }
     }
 
@@ -38,22 +44,24 @@ class MimicaApp {
 
     setupUI() {
         const controls = {
-            'resolution-select': 'resolution', 'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
-            'confidence-slider': 'confidence', 'skeleton-toggle': 'skeleton', 'mirror-toggle': 'mirror', 'ik-toggle': 'ik'
+            'character-mode-select': 'characterMode', 'resolution-select': 'resolution', 
+            'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
+            'confidence-slider': 'confidence', 'mirror-toggle': 'mirror', 'ik-toggle': 'ik'
         };
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
+            if (!el) continue;
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
             el.addEventListener(isCheckbox ? 'change' : 'input', e => {
                 const value = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
                 this.settings[key] = value;
-                if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = value;
+                if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = value.toFixed(1);
                 if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
                 if (key === 'resolution') this.setupCamera();
                 this.saveSettings();
             });
-            if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = this.settings[key];
+            if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = this.settings[key].toFixed(1);
         }
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
         document.getElementById('retry-camera').addEventListener('click', () => this.setupCamera());
@@ -79,11 +87,7 @@ class MimicaApp {
             const [width, height] = this.settings.resolution.split('x').map(Number);
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: width }, height: { ideal: height }, facingMode: 'user' } });
             this.video.srcObject = stream;
-            
-            // Explicitly play the video now that it has a stream
             this.video.play();
-
-            // Wait for the 'playing' event to ensure frames are available
             await new Promise(resolve => {
                 this.video.onplaying = () => {
                     this.canvas.width = this.video.videoWidth;
@@ -91,7 +95,6 @@ class MimicaApp {
                     resolve();
                 };
             });
-            
             document.getElementById('loading-message').style.display = 'none';
         } catch (error) { this.showError('Camera access denied. Please allow camera access in your browser settings and refresh.'); }
     }
@@ -127,9 +130,19 @@ class MimicaApp {
         this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
         this.ctx.restore();
         this.ctx.globalAlpha = 1.0;
+        
         if (this.pose) {
-            if (this.settings.skeleton) { this.renderer.drawSkeleton(this.pose); }
-            else { this.renderer.drawFilledCharacter(this.pose); }
+            switch (this.settings.characterMode) {
+                case 'skeleton':
+                    this.renderer.drawSkeleton(this.pose);
+                    break;
+                case 'filled':
+                    this.renderer.drawFilledCharacter(this.pose);
+                    break;
+                case 'blocky':
+                    this.renderer.drawBlockyCharacter(this.pose);
+                    break;
+            }
         }
     }
 
