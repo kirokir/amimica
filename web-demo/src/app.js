@@ -4,6 +4,7 @@
 import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
+import { ActionRecognizer } from './action-recognizer.js'; // Import the new class
 
 class MimicaApp {
     constructor() {
@@ -16,6 +17,7 @@ class MimicaApp {
         this.renderer = new PoseRenderer(this.ctx);
         this.mapper = new PoseMapper();
         this.smoother = new Smoother();
+        this.actionRecognizer = new ActionRecognizer(); // Instantiate the recognizer
         
         // State
         this.pose = null;
@@ -26,7 +28,9 @@ class MimicaApp {
         // Recording State
         this.mediaRecorder = null;
         this.recordedChunks = [];
+        this.recordedActions = []; // Array to store JSON data
         this.isRecording = false;
+        this.recordingStartTime = 0;
 
         this.init();
     }
@@ -47,7 +51,7 @@ class MimicaApp {
             confidence: 0.5,
             mirror: true,
             ik: false,
-            recordBackground: true // New setting for recording
+            recordBackground: true
         };
         try {
             const saved = JSON.parse(localStorage.getItem('mimica-settings')) || {};
@@ -121,29 +125,40 @@ class MimicaApp {
     startRecording() {
         if (!this.canvas) return;
         this.isRecording = true;
+        this.recordingStartTime = performance.now();
         this.recordedChunks = [];
+        this.recordedActions = []; // Reset action data
         document.getElementById('download-area').style.display = 'none';
 
-        const stream = this.canvas.captureStream(30); // Capture at 30 FPS
+        const stream = this.canvas.captureStream(30);
         this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
 
         this.mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                this.recordedChunks.push(event.data);
-            }
+            if (event.data.size > 0) this.recordedChunks.push(event.data);
         };
 
         this.mediaRecorder.onstop = () => {
-            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const downloadLink = document.getElementById('download-link');
-            downloadLink.href = url;
-            document.getElementById('download-area').style.display = 'block';
+            // Create video download link
+            const videoBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            document.getElementById('download-link-video').href = URL.createObjectURL(videoBlob);
+
+            // Create JSON download link
+            const jsonData = {
+                metadata: {
+                    date: new Date().toISOString(),
+                    durationMs: performance.now() - this.recordingStartTime,
+                    sourceResolution: `${this.canvas.width}x${this.canvas.height}`
+                },
+                frames: this.recordedActions
+            };
+            const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+            document.getElementById('download-link-json').href = URL.createObjectURL(jsonBlob);
+            
+            document.getElementById('download-area').style.display = 'flex';
         };
 
         this.mediaRecorder.start();
         
-        // Update UI
         const recordBtn = document.getElementById('record-btn');
         recordBtn.textContent = 'Stop Recording';
         recordBtn.classList.add('recording');
@@ -151,12 +166,9 @@ class MimicaApp {
     }
 
     stopRecording() {
-        if (this.mediaRecorder) {
-            this.mediaRecorder.stop();
-        }
+        if (this.mediaRecorder) this.mediaRecorder.stop();
         this.isRecording = false;
 
-        // Update UI
         const recordBtn = document.getElementById('record-btn');
         recordBtn.textContent = 'Start Recording';
         recordBtn.classList.remove('recording');
@@ -199,11 +211,22 @@ class MimicaApp {
         this.isDetecting = false;
         const inferenceTime = performance.now() - this.lastPoseTime;
         document.getElementById('inference-time').textContent = `Inference: ${inferenceTime.toFixed(0)}ms`;
+
         if (results.poseLandmarks) {
             let points = this.mapper.landmarksToPoints(results.poseLandmarks, this.canvas.width, this.canvas.height, this.settings.mirror);
             points = points.map((p, i) => (p && results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
             const smoothedPoints = this.smoother.smooth(points);
             this.pose = this.settings.ik ? this.mapper.applyIK(smoothedPoints) : smoothedPoints;
+            
+            // If recording, recognize and save the action + data
+            if (this.isRecording && this.pose) {
+                const actionName = this.actionRecognizer.recognize(this.pose);
+                this.recordedActions.push({
+                    timestamp: performance.now() - this.recordingStartTime,
+                    action: actionName,
+                    pose: this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null) // Save rounded x, y for cleaner data
+                });
+            }
         }
     }
 
@@ -216,15 +239,15 @@ class MimicaApp {
     }
 
     render() {
-        // Clear the canvas. If recording animation-only, use a solid color.
+        // If recording animation-only, use a solid color background. Otherwise, clear the canvas.
         if (this.isRecording && !this.settings.recordBackground) {
-            this.ctx.fillStyle = '#1a1a1a'; // Match the page background
+            this.ctx.fillStyle = '#1a1a1a';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         } else {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
-        // Draw the camera background if not in animation-only recording mode
+        // Draw the semi-transparent camera background if not in animation-only recording mode.
         if (!this.isRecording || this.settings.recordBackground) {
             this.ctx.save();
             if (this.settings.mirror) {
