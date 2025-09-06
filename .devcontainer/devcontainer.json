@@ -1,0 +1,21 @@
+{
+	"name": "MIMICA Codespace",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".."
+	},
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"editor.formatOnSave": true,
+				"liveServer.settings.port": 5501
+			},
+			"extensions": [
+				"ritwickdey.LiveServer",
+				"dbaeumer.vscode-eslint"
+			]
+		}
+	},
+	"forwardPorts": [5501],
+	"postCreateCommand": "npm install"
+}
