@@ -204,3 +204,37 @@ select {
 .footer a:hover {
     text-decoration: underline;
 }
+/* --- Recording Styles --- */
+.recording-section {
+    background-color: rgba(0, 255, 136, 0.1);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--primary-color);
+}
+
+.recording-section #record-btn.recording {
+    background-color: var(--error-color);
+}
+
+#download-area {
+    margin-top: 0.5rem;
+}
+
+#download-link {
+    display: block;
+    text-align: center;
+    background-color: var(--secondary-color);
+}
+
+.recording-indicator {
+    color: var(--error-color);
+    margin-left: 0.5rem;
+    font-weight: bold;
+    animation: blink-animation 1.5s steps(2, start) infinite;
+}
+
+@keyframes blink-animation {
+    to {
+        visibility: hidden;
+    }
+}
