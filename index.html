@@ -22,7 +22,7 @@
 <body>
     <div class="app-container">
         <header class="header">
-            <h1>MIMICA</h1>
+            <h1>MIMICA <span class="recording-indicator" id="recording-indicator" style="display: none;">● REC</span></h1>
             <div class="stats">
                 <span id="fps-counter">FPS: --</span>
                 <span id="inference-time">Inference: --ms</span>
@@ -45,6 +45,19 @@
             </div>
 
             <div class="controls-panel">
+                <!-- Recording Controls -->
+                <div class="control-group recording-section">
+                    <button id="record-btn" class="btn btn-primary">Start Recording</button>
+                    <label>
+                        <input type="checkbox" id="record-background-toggle" checked>
+                        Include Camera in Video
+                    </label>
+                    <div id="download-area" style="display: none;">
+                        <a id="download-link" class="btn btn-secondary" download="mimica-recording.webm">Download Video</a>
+                    </div>
+                </div>
+
+                <!-- Existing Controls -->
                 <div class="control-group">
                     <label for="character-mode-select">Character Mode:</label>
                     <select id="character-mode-select">
@@ -57,8 +70,8 @@
                 <div class="control-group">
                     <label for="resolution-select">Video Resolution:</label>
                     <select id="resolution-select">
-                        <option value="320x240">320×240 (Recommended)</option>
-                        <option value="640x360">640×360</option>
+                        <option value="320x240">320×240</option>
+                        <option value="640x360">640×360 (Recommended)</option>
                     </select>
                 </div>
 
@@ -80,7 +93,7 @@
                 <div class="control-group">
                     <label>
                         <input type="checkbox" id="mirror-toggle" checked>
-                        Mirror Video
+                        Mirror Live View
                     </label>
                 </div>
 
