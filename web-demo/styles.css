@@ -250,3 +250,9 @@ select {
 #download-area a {
     width: 100%;
 }
+
+/* Add this to the end of styles.css */
+.stats span {
+    min-width: 120px;
+    text-align: right;
+}
