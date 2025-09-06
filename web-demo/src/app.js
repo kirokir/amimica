@@ -76,7 +76,7 @@ class MimicaApp {
             'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
             'confidence-slider': 'confidence', 'mirror-toggle': 'mirror', 
             'ik-toggle': 'ik', 'record-background-toggle': 'recordBackground',
-            'expression-toggle': 'expression' // Add expression toggle to UI mapping
+            'expression-toggle': 'expression'
         };
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
@@ -106,113 +106,6 @@ class MimicaApp {
         });
     }
 
-    async loadFaceAPI() {
-        this.faceApiReady = false;
-        try {
-            // face-api.js is loaded via script tag in index.html
-            // We just need to load its models.
-            await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
-            await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
-            await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
-            this.faceApiReady = true;
-            console.log('face-api.js models loaded successfully.');
-        } catch (error) {
-            console.error('Failed to load face-api.js models:', error);
-            this.showError('Could not load expression recognition models.');
-        }
-    }
-    
-    async detectExpression() {
-        if (!this.faceApiReady || !this.settings.expression || this.isRecording) return; // Disable during recording to prioritize performance
-        
-        const now = performance.now();
-        if (now - this.lastFaceDetectionTime < 500) return; // Run check every 500ms
-        this.lastFaceDetectionTime = now;
-
-        const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
-        if (detections && detections.expressions) {
-            const expressions = detections.expressions;
-            const primaryExpression = Object.keys(expressions).reduce((a, b) => expressions[a] > expressions[b] ? a : b);
-            this.lastExpression = primaryExpression;
-        }
-    }
-
-    onPoseResults(results) {
-        this.isDetecting = false;
-        const inferenceTime = performance.now() - this.lastPoseTime;
-        document.getElementById('inference-time').textContent = `Inference: ${inferenceTime.toFixed(0)}ms`;
-        if (results.poseLandmarks) {
-            let points = this.mapper.landmarksToPoints(results.poseLandmarks, this.canvas.width, this.canvas.height, this.settings.mirror);
-            points = points.map((p, i) => (p && results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
-            const smoothedPoints = this.smoother.smooth(points);
-            this.pose = this.settings.ik ? this.mapper.applyIK(smoothedPoints) : smoothedPoints;
-            
-            if (this.pose) {
-                const actionName = this.actionRecognizer.recognize(this.pose);
-                document.getElementById('action-display').textContent = `Action: ${actionName}`;
-                
-                if (this.isRecording) {
-                    this.recordedActions.push({
-                        timestamp: Math.round(performance.now() - this.recordingStartTime),
-                        action: actionName,
-                        expression: this.settings.expression ? this.lastExpression : null,
-                        pose: this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null)
-                    });
-                }
-            }
-        }
-    }
-    
-    render() {
-        if (this.isRecording && !this.settings.recordBackground) {
-            this.ctx.fillStyle = '#1a1a1a';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        } else {
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-        if (!this.isRecording || this.settings.recordBackground) {
-            this.ctx.save();
-            if (this.settings.mirror) {
-                this.ctx.scale(-1, 1);
-                this.ctx.translate(-this.canvas.width, 0);
-            }
-            this.ctx.globalAlpha = 0.3;
-            this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.restore();
-        }
-        
-        // Update expression display
-        document.getElementById('expression-display').textContent = `Expression: ${this.settings.expression ? this.lastExpression : '--'}`;
-
-        this.ctx.globalAlpha = 1.0;
-        if (this.pose) {
-            switch (this.settings.characterMode) {
-                case 'skeleton': this.renderer.drawSkeleton(this.pose); break;
-                case 'filled': this.renderer.drawFilledCharacter(this.pose); break;
-                case 'blocky': this.renderer.drawBlockyCharacter(this.pose); break;
-            }
-        }
-    }
-
-    startAnimation() {
-        let frameCount = 0; let lastFpsTime = performance.now();
-        const animate = (now) => {
-            this.detectPose();
-            this.detectExpression(); // Run expression detection in the loop
-            this.render();
-            frameCount++;
-            if (now - lastFpsTime >= 1000) {
-                document.getElementById('fps-counter').textContent = `FPS: ${frameCount}`;
-                frameCount = 0; lastFpsTime = now;
-            }
-            requestAnimationFrame(animate);
-        };
-        requestAnimationFrame(animate);
-    }
-
-    // All other methods (startRecording, stopRecording, loadMediaPipe, setupCamera, detectPose, showError) remain unchanged.
-    // I am including them here for completeness.
-
     startRecording() {
         if (!this.canvas) return;
         this.isRecording = true;
@@ -220,20 +113,37 @@ class MimicaApp {
         this.recordedChunks = [];
         this.recordedActions = [];
         document.getElementById('download-area').style.display = 'none';
+
         const stream = this.canvas.captureStream(30);
         this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-        this.mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) this.recordedChunks.push(event.data); };
+
+        this.mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) this.recordedChunks.push(event.data);
+        };
+
         this.mediaRecorder.onstop = () => {
+            // **NEW**: Generate a timestamp for unique filenames
+            const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+
+            // Create video download link with timestamped filename
             const videoBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
-            document.getElementById('download-link-video').href = URL.createObjectURL(videoBlob);
+            const videoLink = document.getElementById('download-link-video');
+            videoLink.href = URL.createObjectURL(videoBlob);
+            videoLink.download = `mimica-recording-${timestamp}.webm`;
+
+            // Create JSON download link with timestamped filename
             const jsonData = {
                 metadata: { date: new Date().toISOString(), durationMs: performance.now() - this.recordingStartTime, sourceResolution: `${this.canvas.width}x${this.canvas.height}` },
                 frames: this.recordedActions
             };
             const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
-            document.getElementById('download-link-json').href = URL.createObjectURL(jsonBlob);
+            const jsonLink = document.getElementById('download-link-json');
+            jsonLink.href = URL.createObjectURL(jsonBlob);
+            jsonLink.download = `mimica-actions-${timestamp}.json`;
+            
             document.getElementById('download-area').style.display = 'flex';
         };
+
         this.mediaRecorder.start();
         const recordBtn = document.getElementById('record-btn');
         recordBtn.textContent = 'Stop Recording';
@@ -248,6 +158,33 @@ class MimicaApp {
         recordBtn.textContent = 'Start Recording';
         recordBtn.classList.remove('recording');
         document.getElementById('recording-indicator').style.display = 'none';
+    }
+
+    async loadFaceAPI() {
+        this.faceApiReady = false;
+        try {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
+            await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
+            this.faceApiReady = true;
+            console.log('face-api.js models loaded successfully.');
+        } catch (error) {
+            console.error('Failed to load face-api.js models:', error);
+            this.showError('Could not load expression recognition models.');
+        }
+    }
+    
+    async detectExpression() {
+        if (!this.faceApiReady || !this.settings.expression) return;
+        
+        const now = performance.now();
+        if (now - this.lastFaceDetectionTime < 500) return; // Run check every 500ms to save performance
+        this.lastFaceDetectionTime = now;
+
+        const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+        if (detections && detections.expressions) {
+            this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
+        }
     }
 
     async loadMediaPipe() {
@@ -287,6 +224,32 @@ class MimicaApp {
         } catch (error) { this.showError('Camera access denied. Please allow camera access in your browser settings and refresh.'); }
     }
 
+    onPoseResults(results) {
+        this.isDetecting = false;
+        const inferenceTime = performance.now() - this.lastPoseTime;
+        document.getElementById('inference-time').textContent = `Inference: ${inferenceTime.toFixed(0)}ms`;
+        if (results.poseLandmarks) {
+            let points = this.mapper.landmarksToPoints(results.poseLandmarks, this.canvas.width, this.canvas.height, this.settings.mirror);
+            points = points.map((p, i) => (p && results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
+            const smoothedPoints = this.smoother.smooth(points);
+            this.pose = this.settings.ik ? this.mapper.applyIK(smoothedPoints) : smoothedPoints;
+            
+            if (this.pose) {
+                const actionName = this.actionRecognizer.recognize(this.pose);
+                document.getElementById('action-display').textContent = `Action: ${actionName}`;
+                
+                if (this.isRecording) {
+                    this.recordedActions.push({
+                        timestamp: Math.round(performance.now() - this.recordingStartTime),
+                        action: actionName,
+                        expression: this.settings.expression ? this.lastExpression : null,
+                        pose: this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null)
+                    });
+                }
+            }
+        }
+    }
+
     async detectPose() {
         if (!this.mediaPipeReady || !this.cameraReady || this.isDetecting || !this.video.videoWidth) { return; }
         const now = performance.now();
@@ -294,6 +257,50 @@ class MimicaApp {
         this.isDetecting = true;
         this.lastPoseTime = now;
         try { await this.poseDetection.send({ image: this.video }); } catch (error) { console.error("MediaPipe send failed:", error); this.isDetecting = false; }
+    }
+
+    render() {
+        if (this.isRecording && !this.settings.recordBackground) {
+            this.ctx.fillStyle = '#1a1a1a';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        } else {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+        if (!this.isRecording || this.settings.recordBackground) {
+            this.ctx.save();
+            if (this.settings.mirror) {
+                this.ctx.scale(-1, 1);
+                this.ctx.translate(-this.canvas.width, 0);
+            }
+            this.ctx.globalAlpha = 0.3;
+            this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.restore();
+        }
+        document.getElementById('expression-display').textContent = `Expression: ${this.settings.expression ? this.lastExpression : '--'}`;
+        this.ctx.globalAlpha = 1.0;
+        if (this.pose) {
+            switch (this.settings.characterMode) {
+                case 'skeleton': this.renderer.drawSkeleton(this.pose); break;
+                case 'filled': this.renderer.drawFilledCharacter(this.pose); break;
+                case 'blocky': this.renderer.drawBlockyCharacter(this.pose); break;
+            }
+        }
+    }
+
+    startAnimation() {
+        let frameCount = 0; let lastFpsTime = performance.now();
+        const animate = (now) => {
+            this.detectPose();
+            this.detectExpression();
+            this.render();
+            frameCount++;
+            if (now - lastFpsTime >= 1000) {
+                document.getElementById('fps-counter').textContent = `FPS: ${frameCount}`;
+                frameCount = 0; lastFpsTime = now;
+            }
+            requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
     }
     
     showError(message) {
