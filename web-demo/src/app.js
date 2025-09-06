@@ -1,3 +1,6 @@
+/**
+ * MIMICA - Main Application Logic
+ */
 import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
@@ -43,8 +46,9 @@ class MimicaApp {
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
             el.addEventListener(isCheckbox ? 'change' : 'input', e => {
-                this.settings[key] = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
-                if (id.includes('value')) document.getElementById(id.replace('-slider', '-value')).textContent = this.settings[key];
+                const value = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
+                this.settings[key] = value;
+                if (id.includes('slider')) document.getElementById(id.replace('-slider', '-value')).textContent = value;
                 if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
                 if (key === 'resolution') this.setupCamera();
                 this.saveSettings();
@@ -69,14 +73,27 @@ class MimicaApp {
 
     async setupCamera() {
         document.getElementById('error-message').style.display = 'none';
+        document.getElementById('loading-message').style.display = 'flex';
         try {
             if (this.video.srcObject) { this.video.srcObject.getTracks().forEach(track => track.stop()); }
             const [width, height] = this.settings.resolution.split('x').map(Number);
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: width }, height: { ideal: height }, facingMode: 'user' } });
             this.video.srcObject = stream;
-            await new Promise(resolve => { this.video.onloadedmetadata = () => { this.canvas.width = this.video.videoWidth; this.canvas.height = this.video.videoHeight; resolve(); }; });
+            
+            // Explicitly play the video now that it has a stream
+            this.video.play();
+
+            // Wait for the 'playing' event to ensure frames are available
+            await new Promise(resolve => {
+                this.video.onplaying = () => {
+                    this.canvas.width = this.video.videoWidth;
+                    this.canvas.height = this.video.videoHeight;
+                    resolve();
+                };
+            });
+            
             document.getElementById('loading-message').style.display = 'none';
-        } catch (error) { this.showError('Camera access denied. Please allow camera access to use MIMICA.'); }
+        } catch (error) { this.showError('Camera access denied. Please allow camera access in your browser settings and refresh.'); }
     }
 
     onPoseResults(results) {
@@ -96,7 +113,7 @@ class MimicaApp {
         if (!this.poseDetection || this.isDetecting || !this.video.videoWidth || (now - this.lastPoseTime < 1000 / this.settings.fpsCap)) { return; }
         this.isDetecting = true;
         this.lastPoseTime = now;
-        try { await this.poseDetection.send({ image: this.video }); } catch (error) { this.isDetecting = false; }
+        try { await this.poseDetection.send({ image: this.video }); } catch (error) { console.error("MediaPipe send failed:", error); this.isDetecting = false; }
     }
 
     render() {
