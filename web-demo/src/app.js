@@ -122,16 +122,11 @@ class MimicaApp {
         };
 
         this.mediaRecorder.onstop = () => {
-            // **NEW**: Generate a timestamp for unique filenames
             const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-
-            // Create video download link with timestamped filename
             const videoBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
             const videoLink = document.getElementById('download-link-video');
             videoLink.href = URL.createObjectURL(videoBlob);
             videoLink.download = `mimica-recording-${timestamp}.webm`;
-
-            // Create JSON download link with timestamped filename
             const jsonData = {
                 metadata: { date: new Date().toISOString(), durationMs: performance.now() - this.recordingStartTime, sourceResolution: `${this.canvas.width}x${this.canvas.height}` },
                 frames: this.recordedActions
@@ -140,7 +135,6 @@ class MimicaApp {
             const jsonLink = document.getElementById('download-link-json');
             jsonLink.href = URL.createObjectURL(jsonBlob);
             jsonLink.download = `mimica-actions-${timestamp}.json`;
-            
             document.getElementById('download-area').style.display = 'flex';
         };
 
@@ -167,20 +161,17 @@ class MimicaApp {
             await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             this.faceApiReady = true;
-            console.log('face-api.js models loaded successfully.');
         } catch (error) {
             console.error('Failed to load face-api.js models:', error);
-            this.showError('Could not load expression recognition models.');
+            // Non-critical error, so we don't block the app.
         }
     }
     
     async detectExpression() {
         if (!this.faceApiReady || !this.settings.expression) return;
-        
         const now = performance.now();
-        if (now - this.lastFaceDetectionTime < 500) return; // Run check every 500ms to save performance
+        if (now - this.lastFaceDetectionTime < 500) return;
         this.lastFaceDetectionTime = now;
-
         const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
         if (detections && detections.expressions) {
             this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
@@ -210,18 +201,29 @@ class MimicaApp {
             if (this.video.srcObject) { this.video.srcObject.getTracks().forEach(track => track.stop()); }
             const [width, height] = this.settings.resolution.split('x').map(Number);
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: width }, height: { ideal: height }, facingMode: 'user' } });
+            
+            // **NEW: Paranoid check to ensure the stream is valid**
+            if (!stream || !stream.active) {
+                throw new Error("Acquired media stream is not active.");
+            }
+
             this.video.srcObject = stream;
             this.video.play();
-            await new Promise(resolve => {
+            await new Promise((resolve, reject) => {
                 this.video.onplaying = () => {
                     this.canvas.width = this.video.videoWidth;
                     this.canvas.height = this.video.videoHeight;
                     this.cameraReady = true;
                     resolve();
                 };
+                // Failsafe timeout in case 'onplaying' never fires
+                setTimeout(() => reject(new Error("Video playback timed out")), 5000);
             });
             document.getElementById('loading-message').style.display = 'none';
-        } catch (error) { this.showError('Camera access denied. Please allow camera access in your browser settings and refresh.'); }
+        } catch (error) { 
+            console.error("Camera setup failed:", error);
+            this.showError('Camera access denied. Please allow camera access in your browser settings and refresh.'); 
+        }
     }
 
     onPoseResults(results) {
@@ -233,11 +235,9 @@ class MimicaApp {
             points = points.map((p, i) => (p && results.poseLandmarks[i].visibility < this.settings.confidence) ? this.smoother.getPrevious(i) : p);
             const smoothedPoints = this.smoother.smooth(points);
             this.pose = this.settings.ik ? this.mapper.applyIK(smoothedPoints) : smoothedPoints;
-            
             if (this.pose) {
                 const actionName = this.actionRecognizer.recognize(this.pose);
                 document.getElementById('action-display').textContent = `Action: ${actionName}`;
-                
                 if (this.isRecording) {
                     this.recordedActions.push({
                         timestamp: Math.round(performance.now() - this.recordingStartTime),
@@ -266,7 +266,7 @@ class MimicaApp {
         } else {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         }
-        if (!this.isRecording || this.settings.recordBackground) {
+        if ((!this.isRecording || this.settings.recordBackground) && this.cameraReady) {
             this.ctx.save();
             if (this.settings.mirror) {
                 this.ctx.scale(-1, 1);
