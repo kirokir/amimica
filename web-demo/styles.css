@@ -238,3 +238,15 @@ select {
         visibility: hidden;
     }
 }
+
+/* Add this to the end of styles.css */
+#download-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+#download-area a {
+    width: 100%;
+}
