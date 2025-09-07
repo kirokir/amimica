@@ -107,10 +107,10 @@ class MimicaApp {
     async populateCameraList() {
         const cameraSelect = document.getElementById('camera-select');
         try {
-            await navigator.mediaDevices.getUserMedia({ video: true }); // Request permission first to get labels
+            await navigator.mediaDevices.getUserMedia({ video: true });
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
-            cameraSelect.innerHTML = ''; // Clear previous options
+            cameraSelect.innerHTML = '';
             videoDevices.forEach(device => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
@@ -123,9 +123,7 @@ class MimicaApp {
                 this.settings.selectedCameraId = videoDevices[0].deviceId;
                 cameraSelect.value = videoDevices[0].deviceId;
             }
-        } catch (error) {
-            console.error("Could not enumerate camera devices:", error);
-        }
+        } catch (error) { console.error("Could not enumerate camera devices:", error); }
     }
 
     async setupCamera() {
@@ -143,7 +141,6 @@ class MimicaApp {
             if (!stream || !stream.active) throw new Error("Acquired media stream is not active.");
             this.video.srcObject = stream;
             
-            // **CRITICAL FIX FOR MOBILE**: Use 'loadeddata' event which is more reliable
             await new Promise((resolve, reject) => {
                 this.video.onloadeddata = () => {
                     this.video.play();
@@ -155,7 +152,7 @@ class MimicaApp {
                 setTimeout(() => reject(new Error("Video playback timed out")), 5000);
             });
             
-            await this.populateCameraList(); // Re-populate to ensure labels are correct
+            await this.populateCameraList();
             document.getElementById('loading-message').style.display = 'none';
         } catch (error) { 
             console.error("Camera setup failed:", error);
@@ -266,9 +263,12 @@ class MimicaApp {
     }
     
     async detectExpression() {
-        if (!this.faceApiReady || !this.settings.expression) return;
+        if (!this.faceApiReady || !this.settings.expression) {
+            this.lastExpression = 'disabled';
+            return;
+        };
         const now = performance.now();
-        if (now - this.lastFaceDetectionTime < 500) return;
+        if (now - (this.lastFaceDetectionTime || 0) < 500) return;
         this.lastFaceDetectionTime = now;
         const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
         if (detections && detections.expressions) {
@@ -282,6 +282,7 @@ class MimicaApp {
         const animate = (now) => {
             if (this.cameraReady && this.video.readyState >= 3 && this.video.currentTime !== this.lastVideoTime) {
                 const startTimeMs = performance.now();
+                
                 if (this.settings.bodyModeEnabled && this.poseLandmarkerReady) {
                     const poseResults = this.poseLandmarker.detectForVideo(this.video, startTimeMs);
                     document.getElementById('inference-time').textContent = `Pose: ${(performance.now() - startTimeMs).toFixed(0)}ms`;
