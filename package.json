@@ -1,7 +1,7 @@
 {
   "name": "amimica",
   "version": "1.0.0",
-  "description": "Real-time pose detection and stick figure animation using MediaPipe",
+  "description": "Real-time pose, hand, and expression tracking with data export.",
   "type": "module",
   "main": "index.html",
   "scripts": {
@@ -16,7 +16,8 @@
     "mediapipe",
     "pose-detection",
     "pwa",
-    "animation"
+    "animation",
+    "face-api.js"
   ],
   "author": "kirokir",
   "license": "MIT",
