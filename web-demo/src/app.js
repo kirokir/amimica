@@ -9,27 +9,31 @@ import { HandLandmarker, FilesetResolver, PoseLandmarker } from "https://cdn.jsd
 
 class MimicaApp {
     constructor() {
+        // Core elements
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
         
+        // Modules
         this.renderer = new PoseRenderer(this.ctx);
         this.mapper = new PoseMapper();
         this.smoother = new Smoother();
         this.actionRecognizer = new ActionRecognizer();
         
+        // State & Readiness Flags
         this.pose = null;
         this.settings = this.loadSettings();
-        
         this.cameraReady = false;
         this.poseLandmarkerReady = false;
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
         
+        // Detection Results
         this.lastExpression = 'neutral';
         this.lastHandResults = null;
         this.lastVideoTime = -1;
 
+        // Recording State
         this.mediaRecorder = null;
         this.recordedChunks = [];
         this.recordedActions = [];
@@ -41,14 +45,18 @@ class MimicaApp {
 
     async init() {
         this.setupUI();
-        await this.populateCameraList();
-        await Promise.all([
-            this.loadPoseLandmarker(),
-            this.loadFaceAPI(),
-            this.loadHandLandmarker(),
-            this.setupCamera()
-        ]);
-        this.startAnimation();
+        // **NEW ROBUST ORDER**: First get camera, then load models.
+        await this.setupCamera();
+        if (this.cameraReady) {
+            await Promise.all([
+                this.loadPoseLandmarker(),
+                this.loadFaceAPI(),
+                this.loadHandLandmarker(),
+                this.populateCameraList() // Populate list after getting permission
+            ]);
+            document.getElementById('loading-message').style.display = 'none';
+            this.startAnimation();
+        }
     }
 
     loadSettings() {
@@ -88,7 +96,7 @@ class MimicaApp {
                     if (valueEl) valueEl.textContent = value.toFixed(1);
                 }
                 if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
-                if (key === 'resolution' || key === 'selectedCameraId') this.setupCamera();
+                if (key === 'resolution' || key === 'selectedCameraId') this.setupCamera(); // Re-setup camera on change
                 this.saveSettings();
             });
             if (id.includes('slider')) {
@@ -103,29 +111,7 @@ class MimicaApp {
         });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
     }
-
-    async populateCameraList() {
-        const cameraSelect = document.getElementById('camera-select');
-        try {
-            await navigator.mediaDevices.getUserMedia({ video: true });
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(device => device.kind === 'videoinput');
-            cameraSelect.innerHTML = '';
-            videoDevices.forEach(device => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.text = device.label || `Camera ${cameraSelect.length + 1}`;
-                cameraSelect.appendChild(option);
-            });
-            if (this.settings.selectedCameraId && videoDevices.some(d => d.deviceId === this.settings.selectedCameraId)) {
-                cameraSelect.value = this.settings.selectedCameraId;
-            } else if (videoDevices.length > 0) {
-                this.settings.selectedCameraId = videoDevices[0].deviceId;
-                cameraSelect.value = videoDevices[0].deviceId;
-            }
-        } catch (error) { console.error("Could not enumerate camera devices:", error); }
-    }
-
+    
     async setupCamera() {
         this.cameraReady = false;
         document.getElementById('error-message').style.display = 'none';
@@ -151,13 +137,31 @@ class MimicaApp {
                 };
                 setTimeout(() => reject(new Error("Video playback timed out")), 5000);
             });
-            
-            await this.populateCameraList();
-            document.getElementById('loading-message').style.display = 'none';
         } catch (error) { 
             console.error("Camera setup failed:", error);
             this.showError('Camera access denied. Please allow camera access and refresh.'); 
         }
+    }
+
+    async populateCameraList() {
+        const cameraSelect = document.getElementById('camera-select');
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            cameraSelect.innerHTML = '';
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${cameraSelect.length + 1}`;
+                cameraSelect.appendChild(option);
+            });
+            if (this.settings.selectedCameraId && videoDevices.some(d => d.deviceId === this.settings.selectedCameraId)) {
+                cameraSelect.value = this.settings.selectedCameraId;
+            } else if (videoDevices.length > 0) {
+                this.settings.selectedCameraId = videoDevices[0].deviceId;
+                cameraSelect.value = videoDevices[0].deviceId;
+            }
+        } catch (error) { console.error("Could not enumerate camera devices:", error); }
     }
 
     async toggleFullScreen() {
