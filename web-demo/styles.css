@@ -256,3 +256,62 @@ select {
     min-width: 120px;
     text-align: right;
 }
+/* --- New UI Element Styles --- */
+
+/* Fullscreen Button */
+.fullscreen-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    background-color: rgba(42, 42, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    cursor: pointer;
+    padding: 6px;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.fullscreen-btn:hover {
+    opacity: 1;
+}
+
+.fullscreen-btn svg {
+    width: 100%;
+    height: 100%;
+    fill: #f0f0f0;
+}
+
+/* Collapsible Control Sections */
+.control-section {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius);
+    padding: 0.5rem 1rem;
+    transition: background-color 0.2s;
+}
+
+.control-section[open] {
+    background-color: rgba(0,0,0,0.2);
+}
+
+.control-section summary {
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    color: var(--primary-color);
+}
+
+.control-section > div {
+    margin-top: 1rem;
+}
+
+.control-section[open] > *:not(summary) {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
