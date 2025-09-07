@@ -1,6 +1,3 @@
-
-### **`app.js` (Complete & Final)**
-```javascript
 /**
  * MIMICA - Main Application Logic
  */
@@ -22,8 +19,6 @@ class MimicaApp {
         this.actionRecognizer = new ActionRecognizer();
         
         this.pose = null;
-        this.lastPoseTime = 0;
-        this.isDetecting = false;
         this.settings = this.loadSettings();
         
         this.cameraReady = false;
@@ -32,7 +27,6 @@ class MimicaApp {
         this.handLandmarkerReady = false;
         
         this.lastExpression = 'neutral';
-        this.lastFaceDetectionTime = 0;
         this.lastHandResults = null;
         this.lastVideoTime = -1;
 
@@ -113,10 +107,10 @@ class MimicaApp {
     async populateCameraList() {
         const cameraSelect = document.getElementById('camera-select');
         try {
-            await navigator.mediaDevices.getUserMedia({ video: true });
+            await navigator.mediaDevices.getUserMedia({ video: true }); // Request permission first to get labels
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
-            cameraSelect.innerHTML = '';
+            cameraSelect.innerHTML = ''; // Clear previous options
             videoDevices.forEach(device => {
                 const option = document.createElement('option');
                 option.value = device.deviceId;
@@ -127,8 +121,11 @@ class MimicaApp {
                 cameraSelect.value = this.settings.selectedCameraId;
             } else if (videoDevices.length > 0) {
                 this.settings.selectedCameraId = videoDevices[0].deviceId;
+                cameraSelect.value = videoDevices[0].deviceId;
             }
-        } catch (error) { console.error("Could not enumerate camera devices:", error); }
+        } catch (error) {
+            console.error("Could not enumerate camera devices:", error);
+        }
     }
 
     async setupCamera() {
@@ -145,9 +142,11 @@ class MimicaApp {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             if (!stream || !stream.active) throw new Error("Acquired media stream is not active.");
             this.video.srcObject = stream;
-            this.video.play();
+            
+            // **CRITICAL FIX FOR MOBILE**: Use 'loadeddata' event which is more reliable
             await new Promise((resolve, reject) => {
-                this.video.onplaying = () => {
+                this.video.onloadeddata = () => {
+                    this.video.play();
                     this.canvas.width = this.video.videoWidth;
                     this.canvas.height = this.video.videoHeight;
                     this.cameraReady = true;
@@ -155,6 +154,8 @@ class MimicaApp {
                 };
                 setTimeout(() => reject(new Error("Video playback timed out")), 5000);
             });
+            
+            await this.populateCameraList(); // Re-populate to ensure labels are correct
             document.getElementById('loading-message').style.display = 'none';
         } catch (error) { 
             console.error("Camera setup failed:", error);
@@ -164,17 +165,20 @@ class MimicaApp {
 
     async toggleFullScreen() {
         const container = document.getElementById('video-container');
-        if (!document.fullscreenElement) {
-            try {
+        try {
+            if (!document.fullscreenElement) {
                 await container.requestFullscreen();
-                await screen.orientation.lock('landscape-primary').catch(() => {});
-            } catch (err) {
-                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                if (screen.orientation && screen.orientation.lock) {
+                    await screen.orientation.lock('landscape-primary').catch(() => {});
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    await document.exitFullscreen();
+                }
             }
-        } else {
-            if (document.exitFullscreen) {
-                await document.exitFullscreen();
-            }
+        } catch (err) {
+            console.error(`Fullscreen Error: ${err.message} (${err.name})`);
+            alert("Fullscreen mode is not supported by your browser or was denied.");
         }
     }
 
