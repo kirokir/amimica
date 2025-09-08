@@ -1,9 +1,23 @@
+// **DEFINITIVE FIX**: This is the single, correct import for all MediaPipe vision tasks.
+import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs";
 import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
 import { ActionRecognizer } from './action-recognizer.js';
-// **DEFINITIVE FIX**: This is the single, correct import for all MediaPipe vision tasks.
-import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.js";
+
+class MimicaApp {
+    // ... (The rest of the app.js code is unchanged from the last complete version)
+}
+
+document.addEventListener('DOMContentLoaded', () => new MimicaApp());
+```For absolute certainty, here is the full, complete, and final `app.js` again.
+
+```javascript
+import { PoseRenderer } from './renderer.js';
+import { PoseMapper } from './mapper.js';
+import { Smoother } from './smoother.js';
+import { ActionRecognizer } from './action-recognizer.js';
+import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs";
 
 class MimicaApp {
     constructor() {
