@@ -10,32 +10,23 @@
     <meta name="theme-color" content="#1a1a1a">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     
-    <!-- PWA meta tags -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
-    <!-- Corrected Content-Security-Policy -->
+    <!-- Final, Corrected Content-Security-Policy -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com;">
 
-    <!-- LIBRARIES -->
+    <!-- LIBRARIES (Order is critical) -->
+    <!-- 1. Load MediaPipe module loader -->
+    <script type="module" src="mediapipe-loader.js"></script>
+    <!-- 2. Load face-api.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
-    <!-- ✅ DEFINITIVE FIX: Load MediaPipe Tasks Vision as a module and expose to window -->
-    <script type="module">
-      import {
-        FilesetResolver,
-        PoseLandmarker,
-        HandLandmarker
-      } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
-
-      // Expose the necessary classes to the global window object
-      window.MediaPipeTasks = { FilesetResolver, PoseLandmarker, HandLandmarker };
-    </script>
 </head>
 <body>
     <div class="app-container">
+        <!-- The rest of your body content remains the same -->
         <header class="header">
             <h1>MIMICA <span class="recording-indicator" id="recording-indicator" style="display: none;">● REC</span></h1>
             <div class="stats">
@@ -45,7 +36,6 @@
                 <span id="inference-time">Pose: --ms</span>
             </div>
         </header>
-
         <main class="main-content">
             <div class="video-container" id="video-container">
                 <video id="video" autoplay muted playsinline style="display: none;"></video>
@@ -63,7 +53,6 @@
                     <p>Initializing detection models...</p>
                 </div>
             </div>
-
             <div class="controls-panel">
                  <details class="control-section" open>
                     <summary>Config</summary>
@@ -81,7 +70,6 @@
                         <select id="camera-select"></select>
                     </div>
                 </details>
-
                 <details class="control-section">
                     <summary>Details</summary>
                      <div class="control-group">
@@ -121,7 +109,6 @@
                         <button id="calibrate-btn" class="btn btn-secondary">Calibrate Pose</button>
                     </div>
                 </details>
-
                  <div class="control-group recording-section">
                     <button id="record-btn" class="btn btn-primary">Start Recording</button>
                     <label>
@@ -135,7 +122,6 @@
                 </div>
             </div>
         </main>
-        
         <footer class="footer">
             <p>
                 <a href="https://github.com/kirokir/amimica" target="_blank" rel="noopener">
@@ -144,7 +130,8 @@
             </p>
         </footer>
     </div>
-
+    
+    <!-- 3. Finally load your main application script -->
     <script type="module" src="web-demo/src/app.js"></script>
 </body>
 </html>
