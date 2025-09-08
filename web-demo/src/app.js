@@ -2,7 +2,8 @@ import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
 import { ActionRecognizer } from './action-recognizer.js';
-import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/dist/vision_bundle.js";
+// **DEFINITIVE FIX**: This is the single, correct import for all MediaPipe vision tasks.
+import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.js";
 
 class MimicaApp {
     constructor() {
@@ -236,7 +237,7 @@ class MimicaApp {
 
     async loadPoseLandmarker() {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "GPU" },
                 runningMode: "VIDEO", numPoses: 1
@@ -247,7 +248,7 @@ class MimicaApp {
 
     async loadHandLandmarker() {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
                 runningMode: "VIDEO", numHands: 2
@@ -257,7 +258,7 @@ class MimicaApp {
 
     async loadObjectDetector() {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.objectDetector = await ObjectDetector.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_v1.tflite', delegate: 'GPU' },
                 runningMode: 'VIDEO', maxResults: 5
@@ -267,7 +268,7 @@ class MimicaApp {
     
     async loadImageSegmenter() {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite', delegate: 'GPU' },
                 runningMode: 'VIDEO', outputCategoryMask: true,
