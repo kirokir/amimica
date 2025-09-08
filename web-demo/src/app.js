@@ -120,7 +120,7 @@ class MimicaApp {
         });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
     }
-
+    
     async setupCamera() {
         this.cameraReady = false;
         document.getElementById('error-message').style.display = 'none';
@@ -291,6 +291,7 @@ class MimicaApp {
                 
                 if (this.settings.bodyModeEnabled && this.poseLandmarkerReady) {
                     const poseResults = this.poseLandmarker.detectForVideo(this.video, startTimeMs);
+                    document.getElementById('inference-time').textContent = `Pose: ${(performance.now() - startTimeMs).toFixed(0)}ms`;
                     if (poseResults.landmarks && poseResults.landmarks.length > 0) {
                         let points = this.mapper.landmarksToPoints(poseResults.landmarks[0], this.canvas.width, this.canvas.height, this.settings.mirror);
                         const smoothedPoints = this.smoother.smooth(points);
@@ -364,7 +365,12 @@ class MimicaApp {
     }
 
     render() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (this.isRecording && !this.settings.recordBackground) {
+            this.ctx.fillStyle = '#1a1a1a';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        } else {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
         if ((!this.isRecording || this.settings.recordBackground) && this.cameraReady) {
             this.ctx.save();
             if (this.settings.mirror) { this.ctx.scale(-1, 1); this.ctx.translate(-this.canvas.width, 0); }
