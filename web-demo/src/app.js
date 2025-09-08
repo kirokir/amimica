@@ -27,6 +27,7 @@ class MimicaApp {
         this.poseLandmarkerReady = false;
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
+        this.animationStarted = false;
         
         // Detection Results
         this.lastExpression = 'neutral';
@@ -45,15 +46,27 @@ class MimicaApp {
 
     async init() {
         this.setupUI();
-        // **NEW ROBUST ORDER**: First get camera, then load models.
+        // First, get camera stream to ask for permission.
         await this.setupCamera();
+        
+        // Only proceed if the camera is successfully set up.
         if (this.cameraReady) {
+            // Now, load all AI models in parallel.
             await Promise.all([
                 this.loadPoseLandmarker(),
                 this.loadFaceAPI(),
                 this.loadHandLandmarker(),
-                this.populateCameraList() // Populate list after getting permission
+                this.populateCameraList() // Also repopulate the camera list with full labels.
             ]);
+        }
+    }
+
+    // Centralized readiness check.
+    checkAllReady() {
+        // This function is called after each major async task finishes.
+        // It only proceeds when EVERYTHING is ready.
+        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && !this.animationStarted) {
+            this.animationStarted = true; // Prevent this from running multiple times
             document.getElementById('loading-message').style.display = 'none';
             this.startAnimation();
         }
@@ -96,7 +109,7 @@ class MimicaApp {
                     if (valueEl) valueEl.textContent = value.toFixed(1);
                 }
                 if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
-                if (key === 'resolution' || key === 'selectedCameraId') this.setupCamera(); // Re-setup camera on change
+                if (key === 'resolution' || key === 'selectedCameraId') this.setupCamera();
                 this.saveSettings();
             });
             if (id.includes('slider')) {
@@ -105,11 +118,33 @@ class MimicaApp {
             }
         }
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
-        document.getElementById('retry-camera').addEventListener('click', () => this.setupCamera());
+        document.getElementById('retry-camera').addEventListener('click', () => this.init()); // Rerun the whole init process
         document.getElementById('record-btn').addEventListener('click', () => {
             if (this.isRecording) { this.stopRecording(); } else { this.startRecording(); }
         });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
+    }
+
+    async populateCameraList() {
+        const cameraSelect = document.getElementById('camera-select');
+        try {
+            // Permission is already granted by setupCamera, so this will have labels.
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            cameraSelect.innerHTML = '';
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${cameraSelect.length + 1}`;
+                cameraSelect.appendChild(option);
+            });
+            if (this.settings.selectedCameraId && videoDevices.some(d => d.deviceId === this.settings.selectedCameraId)) {
+                cameraSelect.value = this.settings.selectedCameraId;
+            } else if (videoDevices.length > 0) {
+                this.settings.selectedCameraId = videoDevices[0].deviceId;
+                cameraSelect.value = videoDevices[0].deviceId;
+            }
+        } catch (error) { console.error("Could not enumerate camera devices:", error); }
     }
     
     async setupCamera() {
@@ -141,27 +176,6 @@ class MimicaApp {
             console.error("Camera setup failed:", error);
             this.showError('Camera access denied. Please allow camera access and refresh.'); 
         }
-    }
-
-    async populateCameraList() {
-        const cameraSelect = document.getElementById('camera-select');
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(device => device.kind === 'videoinput');
-            cameraSelect.innerHTML = '';
-            videoDevices.forEach(device => {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.text = device.label || `Camera ${cameraSelect.length + 1}`;
-                cameraSelect.appendChild(option);
-            });
-            if (this.settings.selectedCameraId && videoDevices.some(d => d.deviceId === this.settings.selectedCameraId)) {
-                cameraSelect.value = this.settings.selectedCameraId;
-            } else if (videoDevices.length > 0) {
-                this.settings.selectedCameraId = videoDevices[0].deviceId;
-                cameraSelect.value = videoDevices[0].deviceId;
-            }
-        } catch (error) { console.error("Could not enumerate camera devices:", error); }
     }
 
     async toggleFullScreen() {
@@ -238,6 +252,7 @@ class MimicaApp {
                 numPoses: 1
             });
             this.poseLandmarkerReady = true;
+            this.checkAllReady();
         } catch(error) { this.showError('Failed to load pose detection models.'); }
     }
 
@@ -254,7 +269,13 @@ class MimicaApp {
                 numHands: 2
             });
             this.handLandmarkerReady = true;
-        } catch (error) { console.error("Failed to load Hand Landmarker:", error); }
+            this.checkAllReady();
+        } catch (error) { 
+            console.error("Failed to load Hand Landmarker:", error); 
+            // This model is optional, so we mark it as ready to not block the app
+            this.handLandmarkerReady = true;
+            this.checkAllReady();
+        }
     }
 
     async loadFaceAPI() {
@@ -263,7 +284,13 @@ class MimicaApp {
             await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             this.faceApiReady = true;
-        } catch (error) { console.error('Failed to load face-api.js models:', error); }
+            this.checkAllReady();
+        } catch (error) { 
+            console.error('Failed to load face-api.js models:', error);
+            // This model is optional, so we mark it as ready to not block the app
+            this.faceApiReady = true;
+            this.checkAllReady();
+        }
     }
     
     async detectExpression() {
@@ -274,9 +301,14 @@ class MimicaApp {
         const now = performance.now();
         if (now - (this.lastFaceDetectionTime || 0) < 500) return;
         this.lastFaceDetectionTime = now;
-        const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
-        if (detections && detections.expressions) {
-            this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
+        try {
+            const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+            if (detections && detections.expressions) {
+                this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
+            }
+        } catch (error) {
+            console.warn("Face detection failed:", error);
+            this.lastExpression = 'error';
         }
     }
 
