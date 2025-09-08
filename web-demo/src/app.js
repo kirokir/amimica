@@ -2,7 +2,6 @@ import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
 import { ActionRecognizer } from './action-recognizer.js';
-// **DEFINITIVE FIX**: Corrected the import URL, removing the extraneous text.
 import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs";
 
 class MimicaApp {
@@ -239,7 +238,7 @@ class MimicaApp {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "GPU" },
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "CPU" },
                 runningMode: "VIDEO", numPoses: 1
             });
             this.poseLandmarkerReady = true;
@@ -250,7 +249,7 @@ class MimicaApp {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "CPU" },
                 runningMode: "VIDEO", numHands: 2
             });
         } catch (error) { console.error("Hand Landmarker failed to load:", error); } finally { this.handLandmarkerReady = true; this.checkAllReady(); }
@@ -260,7 +259,8 @@ class MimicaApp {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.objectDetector = await ObjectDetector.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_v1.tflite', delegate: 'GPU' },
+                // **FIX**: Use correct model path and force CPU delegate for stability
+                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite', delegate: 'CPU' },
                 runningMode: 'VIDEO', maxResults: 5
             });
         } catch (error) { console.error("Object Detector failed to load:", error); } finally { this.objectDetectorReady = true; this.checkAllReady(); }
@@ -270,7 +270,8 @@ class MimicaApp {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite', delegate: 'GPU' },
+                // **FIX**: Use correct model path and force CPU delegate for stability
+                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite', delegate: 'CPU' },
                 runningMode: 'VIDEO', outputCategoryMask: true,
             });
         } catch(error) { console.error("Image Segmenter failed to load:", error); } finally { this.imageSegmenterReady = true; this.checkAllReady(); }
