@@ -1,8 +1,13 @@
+/**
+ * MIMICA - Main Application Logic
+ */
 import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
 import { ActionRecognizer } from './action-recognizer.js';
 
+// **NOTE**: These are now loaded from the global 'window' object
+// provided by mediapipe-loader.js to solve CSP issues.
 const { HandLandmarker, FilesetResolver, PoseLandmarker } = window.MediaPipeTasks;
 
 class MimicaApp {
@@ -10,31 +15,38 @@ class MimicaApp {
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
+        
         this.renderer = new PoseRenderer(this.ctx);
         this.mapper = new PoseMapper();
         this.smoother = new Smoother();
         this.actionRecognizer = new ActionRecognizer();
+        
         this.pose = null;
         this.settings = this.loadSettings();
+        
         this.cameraReady = false;
         this.poseLandmarkerReady = false;
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
         this.animationStarted = false;
+        
         this.lastExpression = 'neutral';
         this.lastHandResults = null;
         this.lastVideoTime = -1;
+
         this.mediaRecorder = null;
         this.recordedChunks = [];
         this.recordedActions = [];
         this.isRecording = false;
         this.recordingStartTime = 0;
+
         this.init();
     }
 
     async init() {
         this.setupUI();
         await this.setupCamera();
+        
         if (this.cameraReady) {
             await Promise.all([
                 this.loadPoseLandmarker(),
@@ -55,7 +67,7 @@ class MimicaApp {
 
     loadSettings() {
         const defaults = {
-            characterMode: 'blocky', resolution: '640x360', smoothing: 0.3,
+            characterMode: 'blocky', resolution: '640x360', smoothing: 0.3, 
             fpsCap: 30, confidence: 0.5, mirror: true, ik: false,
             recordBackground: true, expression: false, bodyModeEnabled: true,
             handTrackingEnabled: false, selectedCameraId: ''
@@ -72,9 +84,9 @@ class MimicaApp {
         const controls = {
             'body-mode-toggle': 'bodyModeEnabled', 'hand-tracking-toggle': 'handTrackingEnabled',
             'expression-toggle': 'expression', 'camera-select': 'selectedCameraId',
-            'character-mode-select': 'characterMode', 'resolution-select': 'resolution',
+            'character-mode-select': 'characterMode', 'resolution-select': 'resolution', 
             'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
-            'confidence-slider': 'confidence', 'mirror-toggle': 'mirror',
+            'confidence-slider': 'confidence', 'mirror-toggle': 'mirror', 
             'ik-toggle': 'ik', 'record-background-toggle': 'recordBackground'
         };
         for (const [id, key] of Object.entries(controls)) {
@@ -120,6 +132,7 @@ class MimicaApp {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             if (!stream || !stream.active) throw new Error("Acquired media stream is not active.");
             this.video.srcObject = stream;
+            
             await new Promise((resolve, reject) => {
                 this.video.onloadeddata = () => {
                     this.video.play();
@@ -130,9 +143,9 @@ class MimicaApp {
                 };
                 setTimeout(() => reject(new Error("Video playback timed out")), 5000);
             });
-        } catch (error) {
+        } catch (error) { 
             console.error("Camera setup failed:", error);
-            this.showError('Camera access denied. Please allow camera access and refresh.');
+            this.showError('Camera access denied. Please allow camera access and refresh.'); 
         }
     }
     
@@ -225,7 +238,8 @@ class MimicaApp {
             this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
                 baseOptions: {
                     modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
-                    delegate: "GPU"
+                    // **DEFINITIVE FIX**: Force CPU delegate for maximum compatibility
+                    delegate: "CPU"
                 },
                 runningMode: "VIDEO",
                 numPoses: 1
@@ -242,7 +256,8 @@ class MimicaApp {
             this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
                     modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "GPU"
+                    // **DEFINITIVE FIX**: Force CPU delegate for maximum compatibility
+                    delegate: "CPU"
                 },
                 runningMode: "VIDEO",
                 numHands: 2
