@@ -1,14 +1,8 @@
-/**
- * MIMICA - Main Application Logic with AI Backend Integration
- */
 import { PoseRenderer } from './renderer.js';
 import { PoseMapper } from './mapper.js';
 import { Smoother } from './smoother.js';
 import { ActionRecognizer } from './action-recognizer.js';
-
-// **NOTE**: These are now loaded from the global 'window' object
-// provided by mediapipe-loader.js to solve CSP issues.
-const { HandLandmarker, FilesetResolver, PoseLandmarker } = window.MediaPipeTasks;
+import { HandLandmarker, FilesetResolver, PoseLandmarker, ObjectDetector, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/dist/vision_bundle.js";
 
 class MimicaApp {
     constructor() {
@@ -28,10 +22,14 @@ class MimicaApp {
         this.poseLandmarkerReady = false;
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
+        this.objectDetectorReady = false;
+        this.imageSegmenterReady = false;
         this.animationStarted = false;
         
         this.lastExpression = 'neutral';
         this.lastHandResults = null;
+        this.lastObjectDetections = null;
+        this.lastSegmentationResult = null;
         this.lastVideoTime = -1;
 
         this.mediaRecorder = null;
@@ -40,28 +38,7 @@ class MimicaApp {
         this.isRecording = false;
         this.recordingStartTime = 0;
 
-        // AI Backend Integration
-        this.websocket = null;
-        this.isAIEnabled = false;
-        this.isBackendConnected = false;
-        this.backendUrl = this.getBackendUrl();
-        this.lastBackendProcessTime = 0;
-        this.backendProcessInterval = 100; // 10 FPS for backend processing
-        this.aiObjects = [];
-        this.aiAction = "idle";
-        this.connectionRetryCount = 0;
-        this.maxRetries = 5;
-
         this.init();
-    }
-
-    getBackendUrl() {
-        const hostname = window.location.hostname;
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return 'ws://localhost:8000/ws/process';
-        } else {
-            return 'wss://mimica-backend.onrender.com/ws/process';
-        }
     }
 
     async init() {
@@ -69,17 +46,20 @@ class MimicaApp {
         await this.setupCamera();
         
         if (this.cameraReady) {
+            document.getElementById('loading-message').style.display = 'flex';
             await Promise.all([
                 this.loadPoseLandmarker(),
                 this.loadFaceAPI(),
                 this.loadHandLandmarker(),
+                this.loadObjectDetector(),
+                this.loadImageSegmenter(),
                 this.populateCameraList()
             ]);
         }
     }
 
     checkAllReady() {
-        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && !this.animationStarted) {
+        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && this.objectDetectorReady && this.imageSegmenterReady && !this.animationStarted) {
             this.animationStarted = true;
             document.getElementById('loading-message').style.display = 'none';
             this.startAnimation();
@@ -91,7 +71,8 @@ class MimicaApp {
             characterMode: 'blocky', resolution: '640x360', smoothing: 0.3, 
             fpsCap: 30, confidence: 0.5, mirror: true, ik: false,
             recordBackground: true, expression: false, bodyModeEnabled: true,
-            handTrackingEnabled: false, selectedCameraId: '', aiVisionEnabled: false
+            handTrackingEnabled: false, selectedCameraId: '',
+            objectDetectionEnabled: false, segmentationEnabled: false
         };
         try {
             const saved = JSON.parse(localStorage.getItem('mimica-settings')) || {};
@@ -104,14 +85,13 @@ class MimicaApp {
     setupUI() {
         const controls = {
             'body-mode-toggle': 'bodyModeEnabled', 'hand-tracking-toggle': 'handTrackingEnabled',
-            'expression-toggle': 'expression', 'camera-select': 'selectedCameraId',
+            'expression-toggle': 'expression', 'object-detection-toggle': 'objectDetectionEnabled',
+            'segmentation-toggle': 'segmentationEnabled', 'camera-select': 'selectedCameraId',
             'character-mode-select': 'characterMode', 'resolution-select': 'resolution', 
             'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
             'confidence-slider': 'confidence', 'mirror-toggle': 'mirror', 
-            'ik-toggle': 'ik', 'record-background-toggle': 'recordBackground',
-            'ai-vision-toggle': 'aiVisionEnabled'
+            'ik-toggle': 'ik', 'record-background-toggle': 'recordBackground'
         };
-        
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
             if (!el) continue;
@@ -126,7 +106,6 @@ class MimicaApp {
                 }
                 if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
                 if (key === 'resolution' || key === 'selectedCameraId') this.setupCamera();
-                if (key === 'aiVisionEnabled') this.toggleAIVision(value);
                 this.saveSettings();
             });
             if (id.includes('slider')) {
@@ -134,264 +113,12 @@ class MimicaApp {
                 if (valueEl) valueEl.textContent = this.settings[key].toFixed(1);
             }
         }
-        
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
-        document.getElementById('retry-camera').addEventListener('click', () => this.init());
+        document.getElementById('retry-camera').addEventListener('click', () => window.location.reload());
         document.getElementById('record-btn').addEventListener('click', () => {
             if (this.isRecording) { this.stopRecording(); } else { this.startRecording(); }
         });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
-        
-        // Initialize AI Vision status
-        this.updateAIVisionStatus();
-        
-        // Auto-connect if previously enabled
-        if (this.settings.aiVisionEnabled) {
-            setTimeout(() => this.toggleAIVision(true), 1000);
-        }
-    }
-
-    async toggleAIVision(enabled) {
-        this.isAIEnabled = enabled;
-        this.settings.aiVisionEnabled = enabled;
-        this.saveSettings();
-        
-        if (enabled) {
-            await this.connectToBackend();
-        } else {
-            this.disconnectFromBackend();
-        }
-        
-        this.updateAIVisionStatus();
-    }
-
-    async connectToBackend() {
-        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-            return;
-        }
-
-        try {
-            console.log(`Connecting to AI backend: ${this.backendUrl}`);
-            this.updateAIVisionStatus('connecting');
-            
-            this.websocket = new WebSocket(this.backendUrl);
-            
-            this.websocket.onopen = () => {
-                console.log('Connected to AI backend');
-                this.isBackendConnected = true;
-                this.connectionRetryCount = 0;
-                this.updateAIVisionStatus('connected');
-                this.showStatus('AI Vision connected successfully', 'success');
-            };
-            
-            this.websocket.onmessage = (event) => {
-                try {
-                    const result = JSON.parse(event.data);
-                    this.handleBackendResponse(result);
-                } catch (error) {
-                    console.error('Error parsing backend response:', error);
-                }
-            };
-            
-            this.websocket.onclose = (event) => {
-                console.log('Disconnected from AI backend', event.code, event.reason);
-                this.isBackendConnected = false;
-                this.updateAIVisionStatus('disconnected');
-                
-                // Attempt reconnection if AI is still enabled
-                if (this.isAIEnabled && this.connectionRetryCount < this.maxRetries) {
-                    this.connectionRetryCount++;
-                    console.log(`Attempting reconnection ${this.connectionRetryCount}/${this.maxRetries}`);
-                    setTimeout(() => this.connectToBackend(), 2000 * this.connectionRetryCount);
-                } else if (this.connectionRetryCount >= this.maxRetries) {
-                    this.showStatus('AI Vision connection failed - max retries exceeded', 'error');
-                    this.isAIEnabled = false;
-                    this.settings.aiVisionEnabled = false;
-                    document.getElementById('ai-vision-toggle').checked = false;
-                    this.saveSettings();
-                }
-            };
-            
-            this.websocket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.isBackendConnected = false;
-                this.updateAIVisionStatus('error');
-            };
-            
-        } catch (error) {
-            console.error('Failed to connect to backend:', error);
-            this.updateAIVisionStatus('error');
-            this.showStatus('Failed to connect to AI backend: ' + error.message, 'error');
-        }
-    }
-
-    disconnectFromBackend() {
-        if (this.websocket) {
-            this.websocket.close();
-            this.websocket = null;
-        }
-        this.isBackendConnected = false;
-        this.aiObjects = [];
-        this.aiAction = "idle";
-        this.updateAIVisionStatus('disconnected');
-    }
-
-    handleBackendResponse(result) {
-        try {
-            if (result.objects) {
-                this.aiObjects = result.objects;
-            }
-            
-            if (result.segmented_action) {
-                this.aiAction = result.segmented_action;
-            }
-            
-            if (result.error) {
-                console.warn('Backend processing error:', result.error);
-            }
-            
-        } catch (error) {
-            console.error('Error handling backend response:', error);
-        }
-    }
-
-    captureFrameForBackend() {
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        
-        tempCanvas.width = this.canvas.width;
-        tempCanvas.height = this.canvas.height;
-        
-        // Capture the current video frame
-        tempCtx.save();
-        if (this.settings.mirror) {
-            tempCtx.scale(-1, 1);
-            tempCtx.translate(-tempCanvas.width, 0);
-        }
-        tempCtx.drawImage(this.video, 0, 0, tempCanvas.width, tempCanvas.height);
-        tempCtx.restore();
-        
-        return tempCanvas.toDataURL('image/jpeg', 0.7);
-    }
-
-    async sendFrameToBackend() {
-        if (!this.isBackendConnected || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
-            return;
-        }
-
-        try {
-            const frameData = this.captureFrameForBackend();
-            
-            // Prepare pose data
-            const poseData = this.pose ? this.pose.map(point => 
-                point ? { x: Math.round(point.x), y: Math.round(point.y) } : { x: 0, y: 0 }
-            ) : [];
-            
-            // Prepare hands data
-            const handsData = this.lastHandResults && this.lastHandResults.landmarks ? 
-                this.lastHandResults.landmarks.map(hand => 
-                    hand.map(landmark => ({ x: landmark.x, y: landmark.y, z: landmark.z }))
-                ) : [[], []];
-            
-            const message = {
-                frame: frameData,
-                pose: poseData,
-                hands: handsData,
-                expression: this.lastExpression || 'neutral'
-            };
-            
-            this.websocket.send(JSON.stringify(message));
-            
-        } catch (error) {
-            console.error('Error sending frame to backend:', error);
-        }
-    }
-
-    updateAIVisionStatus(status = null) {
-        const statusElement = document.getElementById('ai-status');
-        if (!statusElement) return;
-        
-        let displayStatus = status;
-        let className = '';
-        
-        if (!displayStatus) {
-            if (this.isBackendConnected) {
-                displayStatus = 'connected';
-            } else if (this.isAIEnabled) {
-                displayStatus = 'connecting';
-            } else {
-                displayStatus = 'disabled';
-            }
-        }
-        
-        switch (displayStatus) {
-            case 'connected':
-                statusElement.textContent = 'AI Vision: Connected';
-                className = 'status-connected';
-                break;
-            case 'connecting':
-                statusElement.textContent = 'AI Vision: Connecting...';
-                className = 'status-connecting';
-                break;
-            case 'disconnected':
-                statusElement.textContent = 'AI Vision: Disconnected';
-                className = 'status-disconnected';
-                break;
-            case 'error':
-                statusElement.textContent = 'AI Vision: Error';
-                className = 'status-error';
-                break;
-            default:
-                statusElement.textContent = 'AI Vision: Disabled';
-                className = 'status-disabled';
-        }
-        
-        statusElement.className = `status ${className}`;
-    }
-
-    showStatus(message, type = 'info') {
-        // Create or update status notification
-        let statusDiv = document.getElementById('status-notification');
-        if (!statusDiv) {
-            statusDiv = document.createElement('div');
-            statusDiv.id = 'status-notification';
-            statusDiv.style.cssText = `
-                position: fixed; top: 10px; right: 10px; z-index: 1000;
-                padding: 10px 15px; border-radius: 5px; color: white;
-                font-weight: bold; max-width: 300px; word-wrap: break-word;
-            `;
-            document.body.appendChild(statusDiv);
-        }
-        
-        statusDiv.textContent = message;
-        statusDiv.className = `status-${type}`;
-        
-        // Style based on type
-        switch (type) {
-            case 'success':
-                statusDiv.style.backgroundColor = '#4CAF50';
-                break;
-            case 'error':
-                statusDiv.style.backgroundColor = '#F44336';
-                break;
-            case 'warning':
-                statusDiv.style.backgroundColor = '#FF9800';
-                break;
-            default:
-                statusDiv.style.backgroundColor = '#2196F3';
-        }
-        
-        // Auto-hide after 3 seconds
-        setTimeout(() => {
-            if (statusDiv && statusDiv.parentNode) {
-                statusDiv.style.opacity = '0';
-                setTimeout(() => {
-                    if (statusDiv && statusDiv.parentNode) {
-                        statusDiv.parentNode.removeChild(statusDiv);
-                    }
-                }, 300);
-            }
-        }, 3000);
     }
 
     async setupCamera() {
@@ -424,7 +151,7 @@ class MimicaApp {
             this.showError('Camera access denied. Please allow camera access and refresh.'); 
         }
     }
-    
+
     async populateCameraList() {
         const cameraSelect = document.getElementById('camera-select');
         try {
@@ -508,76 +235,53 @@ class MimicaApp {
     }
 
     async loadPoseLandmarker() {
-        this.poseLandmarkerReady = false;
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
             this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
-                    delegate: "CPU"
-                },
-                runningMode: "VIDEO",
-                numPoses: 1
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "GPU" },
+                runningMode: "VIDEO", numPoses: 1
             });
             this.poseLandmarkerReady = true;
-            this.checkAllReady();
-        } catch(error) { this.showError('Failed to load pose detection models.'); }
+        } catch(error) { this.showError('Failed to load pose models.'); } finally { this.checkAllReady(); }
     }
 
     async loadHandLandmarker() {
-        this.handLandmarkerReady = false;
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
             this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "CPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 2
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
+                runningMode: "VIDEO", numHands: 2
             });
-            this.handLandmarkerReady = true;
-            this.checkAllReady();
-        } catch (error) { 
-            console.error("Failed to load Hand Landmarker:", error);
-            this.handLandmarkerReady = true;
-            this.checkAllReady();
-        }
+        } catch (error) { console.error("Hand Landmarker failed to load:", error); } finally { this.handLandmarkerReady = true; this.checkAllReady(); }
+    }
+
+    async loadObjectDetector() {
+        try {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            this.objectDetector = await ObjectDetector.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_v1.tflite', delegate: 'GPU' },
+                runningMode: 'VIDEO', maxResults: 5
+            });
+        } catch (error) { console.error("Object Detector failed to load:", error); } finally { this.objectDetectorReady = true; this.checkAllReady(); }
+    }
+    
+    async loadImageSegmenter() {
+        try {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite', delegate: 'GPU' },
+                runningMode: 'VIDEO', outputCategoryMask: true,
+            });
+        } catch(error) { console.error("Image Segmenter failed to load:", error); } finally { this.imageSegmenterReady = true; this.checkAllReady(); }
     }
 
     async loadFaceAPI() {
-        this.faceApiReady = false;
         try {
             await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
-            this.faceApiReady = true;
-            this.checkAllReady();
-        } catch (error) { 
-            console.error('Failed to load face-api.js models:', error);
-            this.faceApiReady = true;
-            this.checkAllReady();
-        }
+        } catch (error) { console.error('face-api.js models failed to load:', error); } finally { this.faceApiReady = true; this.checkAllReady(); }
     }
     
-    async detectExpression() {
-        if (!this.faceApiReady || !this.settings.expression) {
-            this.lastExpression = 'disabled';
-            return;
-        };
-        const now = performance.now();
-        if (now - (this.lastFaceDetectionTime || 0) < 500) return;
-        this.lastFaceDetectionTime = now;
-        try {
-            const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
-            if (detections && detections.expressions) {
-                this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
-            }
-        } catch (error) {
-            console.warn("Face detection failed:", error);
-            this.lastExpression = 'error';
-        }
-    }
-
     startAnimation() {
         let lastFpsTime = performance.now();
         let frameCount = 0;
@@ -587,7 +291,6 @@ class MimicaApp {
                 
                 if (this.settings.bodyModeEnabled && this.poseLandmarkerReady) {
                     const poseResults = this.poseLandmarker.detectForVideo(this.video, startTimeMs);
-                    document.getElementById('inference-time').textContent = `Pose: ${(performance.now() - startTimeMs).toFixed(0)}ms`;
                     if (poseResults.landmarks && poseResults.landmarks.length > 0) {
                         let points = this.mapper.landmarksToPoints(poseResults.landmarks[0], this.canvas.width, this.canvas.height, this.settings.mirror);
                         const smoothedPoints = this.smoother.smooth(points);
@@ -599,16 +302,19 @@ class MimicaApp {
                     this.lastHandResults = this.handLandmarker.detectForVideo(this.video, startTimeMs);
                 } else { this.lastHandResults = null; }
 
+                if (this.settings.objectDetectionEnabled && this.objectDetectorReady) {
+                    this.lastObjectDetections = this.objectDetector.detectForVideo(this.video, startTimeMs);
+                } else { this.lastObjectDetections = null; }
+                
+                if (this.settings.segmentationEnabled && this.imageSegmenterReady) {
+                    this.imageSegmenter.segmentForVideo(this.video, startTimeMs, (result) => {
+                        this.lastSegmentationResult = result;
+                    });
+                } else { this.lastSegmentationResult = null; }
+
                 this.detectExpression();
                 this.updateDataAndRecording();
                 this.lastVideoTime = this.video.currentTime;
-
-                // Send frame to AI backend if enabled and connected
-                if (this.isAIEnabled && this.isBackendConnected && 
-                    (now - this.lastBackendProcessTime) >= this.backendProcessInterval) {
-                    this.sendFrameToBackend();
-                    this.lastBackendProcessTime = now;
-                }
             }
 
             this.render();
@@ -622,90 +328,76 @@ class MimicaApp {
         requestAnimationFrame(animate);
     }
 
-    updateDataAndRecording() {
-        // Use AI action if available, otherwise local action recognition
-        const localAction = this.pose ? this.actionRecognizer.recognize(this.pose) : "unknown";
-        const displayAction = this.isAIEnabled && this.isBackendConnected && this.aiAction !== "idle" ? 
-            this.aiAction : localAction;
-        
-        document.getElementById('action-display').textContent = `Action: ${this.settings.bodyModeEnabled ? displayAction : '--'}`;
-        document.getElementById('expression-display').textContent = `Expression: ${this.settings.expression ? this.lastExpression : '--'}`;
-
-        // Show AI objects count if available
-        const aiObjectsElement = document.getElementById('ai-objects-display');
-        if (aiObjectsElement) {
-            if (this.isAIEnabled && this.isBackendConnected && this.aiObjects.length > 0) {
-                const objectLabels = this.aiObjects.map(obj => obj.label).join(', ');
-                aiObjectsElement.textContent = `Objects: ${objectLabels}`;
-            } else {
-                aiObjectsElement.textContent = 'Objects: --';
+    async detectExpression() {
+        if (!this.faceApiReady || !this.settings.expression) {
+            this.lastExpression = 'disabled';
+            return;
+        };
+        const now = performance.now();
+        if (now - (this.lastFaceDetectionTime || 0) < 1000) return;
+        this.lastFaceDetectionTime = now;
+        try {
+            const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+            if (detections && detections.expressions) {
+                this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
             }
-        }
+        } catch (error) { this.lastExpression = 'error'; }
+    }
+
+    updateDataAndRecording() {
+        const actionName = this.pose ? this.actionRecognizer.recognize(this.pose) : "unknown";
+        document.getElementById('action-display').textContent = `Action: ${this.settings.bodyModeEnabled ? actionName : '--'}`;
+        document.getElementById('expression-display').textContent = `Expression: ${this.settings.expression ? this.lastExpression : '--'}`;
+        const objectNames = this.lastObjectDetections?.detections.map(d => d.categories[0].categoryName).join(', ') || '--';
+        document.getElementById('objects-display').textContent = `Objects: ${this.settings.objectDetectionEnabled ? objectNames : '--'}`;
 
         if (this.isRecording) {
             this.recordedActions.push({
                 timestamp: Math.round(performance.now() - this.recordingStartTime),
-                action: this.settings.bodyModeEnabled ? displayAction : null,
+                action: this.settings.bodyModeEnabled ? actionName : null,
                 expression: this.settings.expression ? this.lastExpression : null,
                 pose: this.settings.bodyModeEnabled && this.pose ? this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null) : null,
-                hands: this.settings.handTrackingEnabled && this.lastHandResults ? this.lastHandResults.landmarks.map(hand => hand.map(p => ({x: p.x, y: p.y, z: p.z}))) : null,
-                aiObjects: this.isAIEnabled ? this.aiObjects : null,
-                aiAction: this.isAIEnabled ? this.aiAction : null
+                hands: this.settings.handTrackingEnabled && this.lastHandResults ? this.lastHandResults.landmarks : null,
+                objects: this.settings.objectDetectionEnabled && this.lastObjectDetections ? this.lastObjectDetections.detections.map(d => ({ label: d.categories[0].categoryName, score: d.categories[0].score, box: d.boundingBox })) : null
             });
         }
     }
 
-    drawAIObjects() {
-        if (!this.isAIEnabled || !this.isBackendConnected || !this.aiObjects.length) {
-            return;
-        }
-
-        this.ctx.save();
-        this.ctx.strokeStyle = '#00FF00';
-        this.ctx.fillStyle = '#00FF00';
-        this.ctx.lineWidth = 2;
-        this.ctx.font = '14px Arial';
-
-        for (const obj of this.aiObjects) {
-            if (!obj.box || obj.box.length !== 4) continue;
-
-            const [x, y, width, height] = obj.box;
-            
-            // Draw bounding box
-            this.ctx.strokeRect(x, y, width, height);
-            
-            // Draw label
-            const label = `${obj.label} ${obj.confidence ? Math.round(obj.confidence * 100) + '%' : ''}`;
-            const labelWidth = this.ctx.measureText(label).width;
-            
-            // Label background
-            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-            this.ctx.fillRect(x, y - 20, labelWidth + 8, 18);
-            
-            // Label text
-            this.ctx.fillStyle = '#000000';
-            this.ctx.fillText(label, x + 4, y - 6);
-        }
-
-        this.ctx.restore();
-    }
-
     render() {
-        if (this.isRecording && !this.settings.recordBackground) {
-            this.ctx.fillStyle = '#1a1a1a';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        } else {
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        }
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         if ((!this.isRecording || this.settings.recordBackground) && this.cameraReady) {
             this.ctx.save();
-            if (this.settings.mirror) {
-                this.ctx.scale(-1, 1);
-                this.ctx.translate(-this.canvas.width, 0);
-            }
+            if (this.settings.mirror) { this.ctx.scale(-1, 1); this.ctx.translate(-this.canvas.width, 0); }
             this.ctx.globalAlpha = 0.3;
             this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
             this.ctx.restore();
         }
         
-        this.ctx.globalAlpha =
+        this.ctx.globalAlpha = 1.0;
+        if (this.settings.segmentationEnabled && this.lastSegmentationResult) {
+            this.renderer.drawImageSegmentation(this.lastSegmentationResult, this.settings.mirror);
+        }
+        if (this.settings.bodyModeEnabled && this.pose) {
+            switch (this.settings.characterMode) {
+                case 'skeleton': this.renderer.drawSkeleton(this.pose); break;
+                case 'filled': this.renderer.drawFilledCharacter(this.pose); break;
+                case 'blocky': this.renderer.drawBlockyCharacter(this.pose); break;
+            }
+        }
+        if (this.settings.handTrackingEnabled && this.lastHandResults) {
+            this.renderer.drawHandLandmarks(this.lastHandResults.landmarks, this.settings.mirror);
+        }
+        if (this.settings.objectDetectionEnabled && this.lastObjectDetections) {
+            this.renderer.drawObjectDetections(this.lastObjectDetections.detections, this.settings.mirror);
+        }
+    }
+    
+    showError(message) {
+        const errorDiv = document.getElementById('error-message');
+        errorDiv.querySelector('p').textContent = message;
+        errorDiv.style.display = 'flex';
+        document.getElementById('loading-message').style.display = 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => new MimicaApp());
