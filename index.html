@@ -17,7 +17,7 @@
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
     <!-- **FIXED**: Corrected Content-Security-Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com;">
 
     <!-- LIBRARIES -->
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
@@ -48,7 +48,7 @@
                     <p>Please allow camera access in your browser settings and refresh.</p>
                     <button id="retry-camera" class="btn btn-primary">Retry Camera Access</button>
                 </div>
-                <div id="loading-message" class="loading-message">
+                <div id="loading-message" class="loading-message" style="display: flex;">
                     <h3>Loading MIMICA...</h3>
                     <p>Initializing detection models...</p>
                 </div>
@@ -130,7 +130,7 @@
             <p>
                 <a href="https://github.com/kirokir/amimica" target="_blank" rel="noopener">
                     🔗 Repository Seed
-                </a> - made with iaav, by DEAR&CO
+                </a> - made with Laav, by DEAR&CO
             </p>
         </footer>
     </div>
