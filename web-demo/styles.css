@@ -315,3 +315,32 @@ select {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+/* --- Mobile Responsive Fixes --- */
+@media (max-width: 768px) {
+    .main-content {
+        /* Switch to a single column layout on small screens */
+        grid-template-columns: 1fr;
+    }
+
+    .controls-panel {
+        /* Allow the panel to shrink */
+        width: 100%;
+    }
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .stats {
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        width: 100%;
+    }
+    
+    .stats span {
+        min-width: unset; /* Allow stat items to wrap freely */
+        text-align: left;
+    }
+}
