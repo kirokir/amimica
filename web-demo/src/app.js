@@ -53,7 +53,8 @@ class MimicaApp {
         
         if (this.cameraReady) {
             document.getElementById('loading-message').style.display = 'none';
-            this.loadEnabledModels(); // Pre-load models based on saved settings
+            this.loadEnabledModels();
+            this.displaySystemInfo();
             this.startAnimation();
         }
     }
@@ -106,7 +107,9 @@ class MimicaApp {
                     window.location.reload();
                 } else if (key === 'smoothing') {
                     this.smoother.setAlpha(this.settings.smoothing);
-                } else if (id.includes('slider')) {
+                }
+                
+                if (id.includes('slider')) {
                     const valueEl = document.getElementById(id.replace('-slider', '-value'));
                     if (valueEl) valueEl.textContent = parseFloat(value).toFixed(1);
                 }
@@ -119,7 +122,6 @@ class MimicaApp {
         }
         
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
-        document.getElementById('retry-camera-btn').addEventListener('click', () => window.location.reload(true));
         document.getElementById('refresh-btn').addEventListener('click', () => window.location.reload(true));
         document.getElementById('record-btn').addEventListener('click', () => { if (this.isRecording) this.stopRecording(); else this.startRecording(); });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
@@ -206,6 +208,7 @@ class MimicaApp {
             } else if (videoDevices.length > 0) {
                 this.settings.selectedCameraId = videoDevices[0].deviceId;
                 cameraSelect.value = videoDevices[0].deviceId;
+                this.saveSettings();
             }
         } catch (error) { console.error("Could not enumerate camera devices:", error); }
     }
@@ -413,7 +416,7 @@ class MimicaApp {
 
     async detectText() {
         if (!this.models.ocr.ready || this.isOcrRunning) {
-            if (!this.models.ocr.ready) alert("OCR model is not loaded yet. Please enable it in Config and wait for it to be Ready.");
+            if (!this.models.ocr.ready) alert("OCR model is not loaded yet. Please enable it in Config first.");
             return;
         }
         
