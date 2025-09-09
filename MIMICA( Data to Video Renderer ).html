@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MIMICA Replayer</title>
+    <style>
+        /* --- CSS Reset & Base Styles --- */
+        :root {
+            /* Light Theme (Default) */
+            --bg-color: #f0f2f5;
+            --surface-color: #ffffff;
+            --text-primary: #1c1e21;
+            --text-secondary: #606770;
+            --border-color: #ced0d4;
+            --accent-color: #1877f2; /* A blue accent for light mode */
+            --accent-text-color: #ffffff;
+            --icon-filter: invert(0%);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --text-primary: #e4e6eb;
+            --text-secondary: #b0b3b8;
+            --border-color: #393a3b;
+            --accent-color: #00ff7f; /* Spring Green for dark mode */
+            --accent-text-color: #121212;
+            --icon-filter: invert(100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+
+        /* --- Main Layout & Structure --- */
+        .app-container {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .app-header h1 {
+            font-size: 1.25rem;
+            color: var(--accent-color);
+            letter-spacing: 1px;
+        }
+        
+        .status-indicators {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .app-body {
+            display: grid;
+            overflow: hidden;
+        }
+        
+        .canvas-wrapper {
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            min-height: 0;
+        }
+
+        #motionCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .sidebar {
+            background-color: var(--surface-color);
+            padding: 1rem;
+            overflow-y: auto;
+            border-left: 1px solid var(--border-color);
+        }
+
+        .app-footer {
+            padding: 0.5rem 1rem;
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background-color: var(--surface-color);
+            border-top: 1px solid var(--border-color);
+        }
+        .app-footer a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        /* --- Mobile-First Layout --- */
+        @media (max-width: 767px) {
+            .app-body {
+                grid-template-rows: 1fr auto;
+            }
+            .sidebar {
+                border-left: none;
+                border-top: 1px solid var(--border-color);
+            }
+            /* Use a details/summary for mobile controls */
+            .mobile-controls-summary {
+                cursor: pointer;
+                font-weight: 600;
+                list-style: none; /* Hide default arrow */
+            }
+            .mobile-controls-summary::-webkit-details-marker {
+                display: none; /* Hide default arrow */
+            }
+            .mobile-controls-summary::after {
+                content: '▶';
+                font-size: 0.8em;
+                margin-left: 0.5rem;
+                display: inline-block;
+                transition: transform 0.2s;
+            }
+            details[open] > .mobile-controls-summary::after {
+                transform: rotate(90deg);
+            }
+            .controls-content {
+                padding-top: 1rem;
+            }
+        }
+
+        /* --- Desktop Layout --- */
+        @media (min-width: 768px) {
+            .app-body {
+                grid-template-columns: 1fr 350px;
+            }
+            .mobile-controls-summary { display: none; } /* Hide summary on desktop */
+        }
+
+
+        /* --- UI Components --- */
+        .control-section {
+            margin-bottom: 1.5rem;
+        }
+        .control-section summary, .control-section h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            list-style: none;
+        }
+        .control-section summary::-webkit-details-marker { display: none; }
+        .control-section summary::before {
+            content: '▼';
+            font-size: 0.8em;
+            margin-right: 0.5rem;
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+        .control-section[open] > summary::before {
+            transform: rotate(-90deg);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        input[type="checkbox"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background-color: var(--bg-color);
+            margin-right: 0.5rem;
+            font: inherit;
+            color: var(--accent-color);
+            width: 1.15em;
+            height: 1.15em;
+            border: 0.15em solid var(--border-color);
+            border-radius: 0.15em;
+            transform: translateY(-0.075em);
+            display: grid;
+            place-content: center;
+        }
+        input[type="checkbox"]::before {
+            content: "";
+            width: 0.65em;
+            height: 0.65em;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em var(--accent-color);
+            background-color: var(--accent-color);
+        }
+        input[type="checkbox"]:checked::before {
+            transform: scale(1);
+        }
+        
+        .file-input-wrapper {
+            margin-bottom: 1.5rem;
+        }
+        
+        input[type="file"] {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        input[type="file"]::file-selector-button {
+            border: 1px solid var(--accent-color);
+            padding: 0.5em 1em;
+            border-radius: 0.25em;
+            background-color: var(--accent-color);
+            color: var(--accent-text-color);
+            cursor: pointer;
+        }
+
+        .button, button, select {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 0.25rem;
+            border: none;
+            cursor: pointer;
+            text-align: center;
+            transition: background-color 0.2s;
+        }
+        
+        select {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .record-button {
+            background-color: var(--accent-color);
+            color: var(--accent-text-color);
+        }
+        .record-button:hover {
+            opacity: 0.9;
+        }
+        
+        .playback-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .playback-controls button {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        #timelineScrubber {
+            width: 100%;
+            margin: 1rem 0;
+        }
+        
+        .theme-toggle {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            width: auto;
+        }
+        .theme-toggle img {
+            width: 24px;
+            height: 24px;
+            filter: var(--icon-filter);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>MIMICA( Data to Video Renderer )</h1>
+            <div class="status-indicators">
+                <span id="timeText">Time: 00:00.000</span>
+                <span id="frameText">Frame: 0 / 0</span>
+            </div>
+            <button class="theme-toggle" id="themeToggle" title="Toggle Theme">
+                 <img src="https://www.gstatic.com/images/icons/material/system/2x/brightness_6_white_24dp.png" alt="Toggle Theme">
+            </button>
+        </header>
+
+        <div class="app-body">
+            <main class="canvas-wrapper">
+                <canvas id="motionCanvas"></canvas>
+            </main>
+            <aside class="sidebar">
+                 <details class="mobile-controls" open>
+                    <summary class="mobile-controls-summary">Controls</summary>
+                    <div class="controls-content">
+                        <div class="file-input-wrapper">
+                            <input type="file" id="jsonFile" accept=".json">
+                        </div>
+        
+                        <details class="control-section" open>
+                            <summary>Config</summary>
+                            <div class="control-group checkbox-group">
+                                <label><input type="checkbox" id="bodyStream" checked> Enable Body Tracking</label>
+                                <label><input type="checkbox" id="handsStream" checked> Enable Hand Tracking</label>
+                                <label><input type="checkbox" id="faceStream" checked> Enable Expression Recognition</label>
+                                <label><input type="checkbox" id="mirrorMode"> Mirror Mode</label>
+                            </div>
+                        </details>
+        
+                        <details class="control-section" open>
+                            <summary>Playback</summary>
+                             <div class="playback-controls">
+                                <button id="playBtn">Play</button>
+                                <button id="pauseBtn">Pause</button>
+                                <button id="stopBtn">Stop</button>
+                            </div>
+                             <input type="range" id="timelineScrubber" value="0" min="0" max="100" step="1">
+                             <div class="control-group">
+                                 <label for="speedControl">Speed:</label>
+                                 <select id="speedControl">
+                                    <option value="0.5">0.5x</option>
+                                    <option value="1" selected>1x</option>
+                                    <option value="2">2x</option>
+                                </select>
+                             </div>
+                        </details>
+                         
+                        <details class="control-section" open>
+                             <summary>Export</summary>
+                             <button id="exportBtn" class="record-button">Export WebM</button>
+                        </details>
+                    </div>
+                </details>
+            </aside>
+        </div>
+
+        <footer class="app-footer">
+            <span id="statusText">Load a MIMICA JSON file to begin.</span>
+            <br>
+            <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener noreferrer">
+                Made with iaav - contributing to the world robotics and ai community.
+            </a>
+        </footer>
+    </div>
+
+
+    <script type="module">
+        // --- MODULE: renderer.js ---
+        class Renderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.lastFrame = null;
+                this.lastOptions = null;
+                this.defineSkeletons();
+            }
+
+            defineSkeletons() {
+                // Based on MediaPipe Pose (33 landmarks)
+                this.BODY_CONNECTIONS = [
+                    [11, 12], [23, 24], [11, 23], [12, 24],
+                    [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+                    [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+                    [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],
+                    [24, 26], [26, 28], [28, 30], [28, 32], [30, 32],
+                    [0, 1], [1, 2], [2, 3], [3, 7],
+                    [0, 4], [4, 5], [5, 6], [6, 8],
+                    [9, 10]
+                ];
+
+                // Based on MediaPipe Hands (21 landmarks)
+                this.HAND_CONNECTIONS = [
+                    [0, 1], [1, 2], [2, 3], [3, 4],
+                    [0, 5], [5, 6], [6, 7], [7, 8],
+                    [5, 9], [9, 10], [10, 11], [11, 12],
+                    [9, 13], [13, 14], [14, 15], [15, 16],
+                    [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
+                ];
+            }
+            
+            resizeCanvas() {
+                const container = this.canvas.parentElement;
+                this.canvas.width = container.clientWidth;
+                this.canvas.height = container.clientHeight;
+                if (this.lastFrame && this.lastOptions) {
+                    this.drawFrame(this.lastFrame, this.lastOptions);
+                }
+            }
+            
+            drawFrame(frameData, options) {
+                this.lastFrame = frameData;
+                this.lastOptions = options;
+                const { width, height } = this.canvas;
+                this.ctx.clearRect(0, 0, width, height);
+
+                this.ctx.save();
+
+                if (options.mirror) {
+                    this.ctx.translate(width, 0);
+                    this.ctx.scale(-1, 1);
+                }
+
+                if (options.drawBody && frameData.body && frameData.body.length > 0) {
+                    this.drawSkeleton(frameData.body, this.BODY_CONNECTIONS, 'rgba(0, 120, 255, 0.9)', 3);
+                }
+
+                if (options.drawHands && frameData.hands) {
+                    if (frameData.hands[0]) { 
+                        this.drawSkeleton(frameData.hands[0], this.HAND_CONNECTIONS, 'rgba(255, 0, 120, 0.9)', 2);
+                    }
+                    if (frameData.hands[1]) {
+                        this.drawSkeleton(frameData.hands[1], this.HAND_CONNECTIONS, 'rgba(0, 255, 120, 0.9)', 2);
+                    }
+                }
+
+                if (options.drawFace && frameData.face && frameData.body && frameData.body.length > 0) {
+                    this.drawFaceText(frameData.face, frameData.body);
+                }
+                
+                this.ctx.restore();
+            }
+
+            drawSkeleton(landmarks, connections, color, lineWidth) {
+                if (!landmarks || landmarks.length === 0) return;
+                const { width, height } = this.canvas;
+
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = lineWidth;
+                this.ctx.fillStyle = color;
+
+                connections.forEach(([startIdx, endIdx]) => {
+                    if (startIdx < landmarks.length && endIdx < landmarks.length) {
+                        const start = landmarks[startIdx];
+                        const end = landmarks[endIdx];
+                        if (start && end) {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(start.x * width, start.y * height);
+                            this.ctx.lineTo(end.x * width, end.y * height);
+                            this.ctx.stroke();
+                        }
+                    }
+                });
+
+                landmarks.forEach(point => {
+                    if (point) {
+                        const radius = Math.max(2, 6 * (1 - (point.z || 0.5)));
+                        this.ctx.beginPath();
+                        this.ctx.arc(point.x * width, point.y * height, radius, 0, 2 * Math.PI);
+                        this.ctx.fill();
+                    }
+                });
+            }
+
+            drawFaceText(text, bodyLandmarks) {
+                if (!bodyLandmarks || bodyLandmarks.length === 0 || !text) return;
+
+                const { width, height } = this.canvas;
+                const nose = bodyLandmarks[0];
+                const leftShoulder = bodyLandmarks[11];
+                const rightShoulder = bodyLandmarks[12];
+                
+                if (!nose || !leftShoulder || !rightShoulder) return;
+                
+                const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x) * width;
+                const fontSize = Math.max(16, Math.min(32, shoulderWidth / 5));
+
+                const x = nose.x * width;
+                const y = (nose.y * height) - (fontSize * 2);
+
+                this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
+                this.ctx.font = `bold ${fontSize}px sans-serif`;
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(text.toUpperCase(), x, y);
+            }
+        }
+
+        // --- MODULE: scheduler.js ---
+        class Scheduler {
+            constructor(onFrameUpdateCallback) {
+                this.frames = [];
+                this.onFrameUpdate = onFrameUpdateCallback;
+                this.isPlaying = false;
+                this.animationFrameId = null;
+                this.playbackSpeed = 1.0;
+                this.startTime = 0;
+                this.pauseTime = 0;
+                this.currentIndex = 0;
+                this.onPlaybackComplete = null;
+            }
+
+            loadData(frames) {
+                this.frames = frames;
+                this.stop();
+            }
+
+            play() {
+                if (this.isPlaying || this.frames.length === 0) return;
+                this.isPlaying = true;
+                
+                if (this.pauseTime > 0) {
+                    this.startTime += (performance.now() - this.pauseTime);
+                } else {
+                    const offset = this.frames[this.currentIndex]?.timestamp || 0;
+                    this.startTime = performance.now() - (offset / this.playbackSpeed);
+                }
+                
+                this.pauseTime = 0;
+                this.animationFrameId = requestAnimationFrame(this._loop.bind(this));
+            }
+            
+            playFromStart(onComplete) {
+                this.stop();
+                this.onPlaybackComplete = onComplete;
+                this.play();
+            }
+
+            pause() {
+                if (!this.isPlaying) return;
+                this.isPlaying = false;
+                this.pauseTime = performance.now();
+                cancelAnimationFrame(this.animationFrameId);
+            }
+
+            stop() {
+                this.isPlaying = false;
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                }
+                this.startTime = 0;
+                this.pauseTime = 0;
+                this.currentIndex = 0;
+                this.onPlaybackComplete = null;
+                this.redrawCurrentFrame();
+            }
+            
+            seek(frameIndex) {
+                this.currentIndex = Math.max(0, Math.min(frameIndex, this.frames.length - 1));
+                const wasPlaying = this.isPlaying;
+                if (wasPlaying) this.pause();
+                
+                const offset = this.frames[this.currentIndex]?.timestamp || 0;
+                this.startTime = performance.now() - (offset / this.playbackSpeed);
+                this.pauseTime = performance.now();
+                
+                this.redrawCurrentFrame();
+                
+                if (wasPlaying) this.play();
+            }
+            
+            setSpeed(speed) {
+                const wasPlaying = this.isPlaying;
+                if (wasPlaying) this.pause();
+                
+                const currentElapsedTime = (performance.now() - this.startTime) * this.playbackSpeed;
+                this.playbackSpeed = speed;
+                this.startTime = performance.now() - (currentElapsedTime / this.playbackSpeed);
+                
+                if (wasPlaying) this.play();
+            }
+
+            redrawCurrentFrame() {
+                 if (this.frames.length > 0 && this.currentIndex < this.frames.length) {
+                    const state = {
+                        currentFrame: this.frames[this.currentIndex],
+                        currentTime: this.frames[this.currentIndex]?.timestamp || 0,
+                        currentIndex: this.currentIndex
+                    };
+                    this.onFrameUpdate(state);
+                }
+            }
+
+            _loop(timestamp) {
+                if (!this.isPlaying) return;
+
+                const elapsedTime = (timestamp - this.startTime) * this.playbackSpeed;
+
+                while (this.currentIndex < this.frames.length - 1 && this.frames[this.currentIndex + 1].timestamp <= elapsedTime) {
+                    this.currentIndex++;
+                }
+                
+                if (this.currentIndex >= this.frames.length - 1 || !this.frames[this.currentIndex + 1]) {
+                    this.currentIndex = this.frames.length - 1;
+                    this.redrawCurrentFrame();
+                    this.stop();
+                    if (this.onPlaybackComplete) {
+                        this.onPlaybackComplete();
+                        this.onPlaybackComplete = null;
+                    }
+                    return;
+                }
+
+                const frame1 = this.frames[this.currentIndex];
+                const frame2 = this.frames[this.currentIndex + 1];
+
+                const t = (elapsedTime - frame1.timestamp) / (frame2.timestamp - frame1.timestamp);
+                const interpolatedFrame = this._interpolate(frame1, frame2, t);
+
+                const state = {
+                    currentFrame: interpolatedFrame,
+                    currentTime: elapsedTime,
+                    currentIndex: this.currentIndex
+                };
+                this.onFrameUpdate(state);
+
+                this.animationFrameId = requestAnimationFrame(this._loop.bind(this));
+            }
+
+            _interpolate(frame1, frame2, t) {
+                if (t <= 0) return frame1;
+                if (t >= 1) return frame2;
+
+                const lerp = (p1, p2, t) => ({
+                    x: p1.x + (p2.x - p1.x) * t,
+                    y: p1.y + (p2.y - p1.y) * t,
+                    z: (p1.z ?? 0) + ((p2.z ?? 0) - (p1.z ?? 0)) * t,
+                });
+                
+                let interpolatedBody = frame1.body;
+                if (frame1.body && frame1.body.length > 0 && frame2.body && frame2.body.length === frame1.body.length) {
+                    interpolatedBody = frame1.body.map((p, i) => lerp(p, frame2.body[i], t));
+                }
+
+                const interpolatedHands = [...(frame1.hands || [null, null])];
+                if (frame1.hands && frame2.hands) {
+                    if (frame1.hands[0] && frame2.hands[0] && frame1.hands[0].length === frame2.hands[0].length) {
+                        interpolatedHands[0] = frame1.hands[0].map((p, i) => lerp(p, frame2.hands[0][i], t));
+                    }
+                    if (frame1.hands[1] && frame2.hands[1] && frame1.hands[1].length === frame2.hands[1].length) {
+                        interpolatedHands[1] = frame1.hands[1].map((p, i) => lerp(p, frame2.hands[1][i], t));
+                    }
+                }
+                
+                return {
+                    ...frame1,
+                    timestamp: frame1.timestamp + (frame2.timestamp - frame1.timestamp) * t,
+                    body: interpolatedBody,
+                    hands: interpolatedHands,
+                };
+            }
+        }
+
+        // --- MAIN APP LOGIC: app.js ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // UI Element References
+            const fileInput = document.getElementById('jsonFile');
+            const playBtn = document.getElementById('playBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const scrubber = document.getElementById('timelineScrubber');
+            const speedControl = document.getElementById('speedControl');
+            const canvas = document.getElementById('motionCanvas');
+            const bodyStreamCheck = document.getElementById('bodyStream');
+            const handsStreamCheck = document.getElementById('handsStream');
+            const faceStreamCheck = document.getElementById('faceStream');
+            const mirrorModeCheck = document.getElementById('mirrorMode');
+            const exportBtn = document.getElementById('exportBtn');
+            const statusText = document.getElementById('statusText');
+            const timeText = document.getElementById('timeText');
+            const frameText = document.getElementById('frameText');
+            const themeToggle = document.getElementById('themeToggle');
+
+            let motionData = [];
+            let isScrubbing = false;
+
+            const renderer = new Renderer(canvas);
+            const scheduler = new Scheduler(onFrameUpdate);
+            
+            // --- Theme Switcher Logic ---
+            const currentTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+
+            themeToggle.addEventListener('click', () => {
+                let theme = document.documentElement.getAttribute('data-theme');
+                if (theme === 'dark') {
+                    theme = 'light';
+                } else {
+                    theme = 'dark';
+                }
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                scheduler.redrawCurrentFrame(); // Redraw with new theme colors
+            });
+
+            // --- Core App Logic ---
+            function onFrameUpdate(state) {
+                if (!state.currentFrame) return;
+                const renderOptions = {
+                    drawBody: bodyStreamCheck.checked,
+                    drawHands: handsStreamCheck.checked,
+                    drawFace: faceStreamCheck.checked,
+                    mirror: mirrorModeCheck.checked,
+                };
+                renderer.drawFrame(state.currentFrame, renderOptions);
+                updateUI(state);
+            }
+
+            function updateUI(state) {
+                const totalSeconds = state.currentTime / 1000;
+                const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+                const seconds = (totalSeconds % 60).toFixed(3).padStart(6, '0');
+                timeText.textContent = `Time: ${minutes}:${seconds}`;
+                frameText.textContent = `Frame: ${state.currentIndex + 1} / ${motionData.length}`;
+                if (!isScrubbing) {
+                    scrubber.value = state.currentIndex;
+                }
+            }
+            
+            function handleFileLoad(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const parsedJson = JSON.parse(e.target.result);
+                        let rawFrames;
+
+                        if (typeof parsedJson === 'object' && parsedJson !== null && Array.isArray(parsedJson.frames)) {
+                            rawFrames = parsedJson.frames;
+                        } else {
+                            throw new Error("JSON does not contain a 'frames' array.");
+                        }
+
+                        if (rawFrames.length > 0 && typeof rawFrames[0].timestamp === 'undefined') {
+                             throw new Error("Invalid MIMICA data structure. Frame is missing 'timestamp'.");
+                        }
+                        
+                        motionData = rawFrames.map(frame => {
+                            const hands = frame.hands || [];
+                            const rightHand = hands.length > 0 ? hands[0] : null;
+                            const leftHand = hands.length > 1 ? hands[1] : null;
+
+                            return {
+                                timestamp: frame.timestamp,
+                                body: frame.pose || null,
+                                hands: [rightHand, leftHand],
+                                face: frame.expression || null,
+                            };
+                        });
+
+                        scheduler.loadData(motionData);
+                        scrubber.max = motionData.length > 0 ? motionData.length - 1 : 0;
+                        statusText.textContent = `Loaded ${file.name}. Ready to play.`;
+                        handleStop();
+                    } catch (error) {
+                        alert("Error loading file. Please ensure it's a valid MIMICA JSON file.\n\n" + error.message);
+                        console.error(error);
+                    }
+                };
+                reader.readAsText(file);
+            }
+            
+            function handlePlay() {
+                if (!motionData || motionData.length === 0) {
+                    alert("Please load a JSON file first.");
+                    return;
+                }
+                scheduler.play();
+                statusText.textContent = "Status: Playing...";
+            }
+
+            function handleStop() {
+                scheduler.stop();
+                statusText.textContent = "Status: Stopped. Ready to play.";
+            }
+
+            async function handleExport() {
+                if (!motionData || motionData.length === 0) {
+                    alert("Please load a file before exporting.");
+                    return;
+                }
+            
+                statusText.textContent = "Status: Exporting... please wait.";
+                exportBtn.disabled = true;
+
+                const chunks = [];
+                const stream = canvas.captureStream(30);
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'motion-replay.webm';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    statusText.textContent = "Status: Export complete.";
+                    exportBtn.disabled = false;
+                };
+
+                recorder.start();
+                scheduler.playFromStart(() => {
+                    recorder.stop();
+                });
+            }
+
+            // Event Listeners
+            fileInput.addEventListener('change', handleFileLoad);
+            playBtn.addEventListener('click', handlePlay);
+            pauseBtn.addEventListener('click', () => scheduler.pause());
+            stopBtn.addEventListener('click', handleStop);
+            speedControl.addEventListener('change', (e) => scheduler.setSpeed(parseFloat(e.target.value)));
+            scrubber.addEventListener('mousedown', () => isScrubbing = true);
+            scrubber.addEventListener('mouseup', () => isScrubbing = false);
+            scrubber.addEventListener('input', (e) => scheduler.seek(parseInt(e.target.value, 10)));
+            mirrorModeCheck.addEventListener('change', () => scheduler.redrawCurrentFrame());
+            bodyStreamCheck.addEventListener('change', () => scheduler.redrawCurrentFrame());
+            handsStreamCheck.addEventListener('change', () => scheduler.redrawCurrentFrame());
+            faceStreamCheck.addEventListener('change', () => scheduler.redrawCurrentFrame());
+            exportBtn.addEventListener('click', handleExport);
+            window.addEventListener('resize', () => renderer.resizeCanvas());
+
+            // Initial Setup
+            renderer.resizeCanvas();
+        });
+    </script>
+</body>
+</html>
