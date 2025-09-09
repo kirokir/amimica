@@ -478,3 +478,33 @@ select {
         visibility: hidden;
     }
 }
+/* --- Status Indicator Styles --- */
+.status-indicator {
+    margin-left: auto;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.status-not-loaded { background-color: #6c757d; }
+.status-loading { background-color: #ffc107; color: #000; }
+.status-ready { background-color: #28a745; }
+.status-error { background-color: #dc3545; }
+
+/* Ensure label is a flex container for alignment */
+.control-group label {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+/* --- OCR Status Styles --- */
+#ocr-status-text {
+    font-size: 0.9rem;
+    color: #ccc;
+    margin-top: 0.5rem;
+    text-align: center;
+}
