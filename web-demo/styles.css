@@ -520,3 +520,17 @@ select {
     border-radius: 4px;
     line-height: 1.4;
 }
+
+/* --- System Info Styles --- */
+.system-info {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 1rem;
+    text-align: center;
+    border-top: 1px solid #333;
+    padding-top: 1rem;
+}
+
+.system-info span {
+    margin: 0 0.5rem;
+}
