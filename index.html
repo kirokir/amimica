@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
-    <!-- Final, Corrected Content Security Policy -->
+    <!-- **DEFINITIVE, FINAL CONTENT SECURITY POLICY** -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com;
@@ -51,9 +51,9 @@
                     <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
                 </button>
                 <div id="error-message" class="error-message" style="display: none;">
-                    <h3>Camera Access Required</h3>
-                    <p>Please allow camera access and refresh.</p>
-                    <button id="retry-camera-btn" class="btn btn-primary">Retry Camera Access</button>
+                    <h3>An Error Occurred</h3>
+                    <p>There was an issue initializing the camera or AI models.</p>
+                    <button id="refresh-btn" class="btn btn-primary">Reload App (Hard Refresh)</button>
                 </div>
                 <div id="loading-message" class="loading-message" style="display: flex;">
                     <h3>Loading MIMICA...</h3>
@@ -82,18 +82,17 @@
                     </div>
                 </details>
                 
-                <!-- NEW: Hardware Intensive Section -->
                 <details class="control-section">
                     <summary>Hardware Intensive</summary>
                     <p class="info-text">
-                        Warning: These features are computationally expensive and may cause lag or freezing on devices without a dedicated GPU and sufficient RAM.
+                        Warning: These features are computationally expensive and may cause lag on devices without a dedicated GPU.
                     </p>
                     <div class="control-group">
                         <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation <span class="status-indicator status-not-loaded" id="segmentation-status">(Not Loaded)</span></label>
                     </div>
                     <div class="control-group">
                         <button id="ocr-btn" class="btn btn-secondary">Scan Text on Screen</button>
-                        <div id="ocr-status-text">Status: <span id="ocr-status-indicator" class="status-indicator status-not-loaded">(Not Loaded)</span></div>
+                        <div id="ocr-status-text">Status: <span class="status-indicator status-not-loaded" id="ocr-status">(Not Loaded)</span></div>
                     </div>
                 </details>
 
@@ -148,16 +147,13 @@
                         <a id="download-link-json" class="btn btn-secondary">Download Data (JSON)</a>
                     </div>
                 </div>
-                 <div class="control-group">
-                    <button id="refresh-btn" class="btn btn-secondary">Reload App (Hard Refresh)</button>
-                </div>
             </div>
         </main>
         
         <footer class="footer">
             <p>
                 <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener">
-                    Made with iaav
+                    Made with LAAAV
                 </a> - contributing to the world robotics and ai community.
             </p>
             <p style="margin-top: 0.5rem;">
