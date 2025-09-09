@@ -91,22 +91,32 @@ class MimicaApp {
             if (!el) continue;
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
-            el.addEventListener(isCheckbox ? 'change' : 'input', e => {
-                const value = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
+            
+            el.addEventListener('change', e => { // Use 'change' for all inputs
+                const value = isCheckbox ? e.target.checked : e.target.value;
                 this.settings[key] = value;
                 this.saveSettings();
                 
-                if (isCheckbox) this.loadEnabledModels(); // Lazy-load model on toggle
-                if (key === 'resolution' || key === 'selectedCameraId') window.location.reload();
-                if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
+                // For major toggles and resolution, a refresh is the most stable way to re-initialize
+                if (isCheckbox || key === 'resolution' || key === 'selectedCameraId') {
+                    window.location.reload();
+                } else { // For sliders, update in real-time
+                     if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
+                     if (id.includes('slider')) {
+                        const valueEl = document.getElementById(id.replace('-slider', '-value'));
+                        if (valueEl) valueEl.textContent = parseFloat(value).toFixed(1);
+                    }
+                }
             });
-            if (id.includes('slider')) {
-                document.getElementById(id.replace('-slider', '-value')).textContent = this.settings[key].toFixed(1);
+             if (id.includes('slider')) {
+                const valueEl = document.getElementById(id.replace('-slider', '-value'));
+                if(valueEl) valueEl.textContent = this.settings[key];
             }
         }
         
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
         document.getElementById('retry-camera-btn').addEventListener('click', () => window.location.reload(true)); // Hard refresh
+        document.getElementById('refresh-btn').addEventListener('click', () => window.location.reload(true));
         document.getElementById('record-btn').addEventListener('click', () => { if (this.isRecording) this.stopRecording(); else this.startRecording(); });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
         document.getElementById('ocr-btn').addEventListener('click', () => this.detectText());
@@ -122,21 +132,28 @@ class MimicaApp {
     }
 
     updateAllStatusIndicators() {
-        this.updateStatus('body', this.models.pose.ready ? 'ready' : (this.models.pose.loading ? 'loading' : 'not-loaded'), this.models.pose.ready ? 'Ready' : (this.models.pose.loading ? 'Loading...' : 'Not Loaded'));
-        this.updateStatus('hand', this.models.hands.ready ? 'ready' : (this.models.hands.loading ? 'loading' : 'not-loaded'), this.models.hands.ready ? 'Ready' : (this.models.hands.loading ? 'Loading...' : 'Not Loaded'));
-        this.updateStatus('expression', this.models.face.ready ? 'ready' : (this.models.face.loading ? 'loading' : 'not-loaded'), this.models.face.ready ? 'Ready' : (this.models.face.loading ? 'Loading...' : 'Not Loaded'));
-        this.updateStatus('object', this.models.objects.ready ? 'ready' : (this.models.objects.loading ? 'loading' : 'not-loaded'), this.models.objects.ready ? 'Ready' : (this.models.objects.loading ? 'Loading...' : 'Not Loaded'));
-        this.updateStatus('segmentation', this.models.segmentation.ready ? 'ready' : (this.models.segmentation.loading ? 'loading' : 'not-loaded'), this.models.segmentation.ready ? 'Ready' : (this.models.segmentation.loading ? 'Loading...' : 'Not Loaded'));
-        this.updateStatus('ocr-indicator', this.models.ocr.ready ? 'ready' : (this.models.ocr.loading ? 'loading' : 'not-loaded'), this.models.ocr.ready ? 'Ready' : (this.models.ocr.loading ? 'Loading...' : 'Not Loaded'));
+        this.updateStatus('body', this.models.pose.loading ? 'loading' : (this.models.pose.ready ? 'ready' : 'not-loaded'), this.models.pose.loading ? 'Loading...' : (this.models.pose.ready ? 'Ready' : 'Not Loaded'));
+        this.updateStatus('hand', this.models.hands.loading ? 'loading' : (this.models.hands.ready ? 'ready' : 'not-loaded'), this.models.hands.loading ? 'Loading...' : (this.models.hands.ready ? 'Ready' : 'Not Loaded'));
+        this.updateStatus('expression', this.models.face.loading ? 'loading' : (this.models.face.ready ? 'ready' : 'not-loaded'), this.models.face.loading ? 'Loading...' : (this.models.face.ready ? 'Ready' : 'Not Loaded'));
+        this.updateStatus('object', this.models.objects.loading ? 'loading' : (this.models.objects.ready ? 'ready' : 'not-loaded'), this.models.objects.loading ? 'Loading...' : (this.models.objects.ready ? 'Ready' : 'Not Loaded'));
+        this.updateStatus('segmentation', this.models.segmentation.loading ? 'loading' : (this.models.segmentation.ready ? 'ready' : 'not-loaded'), this.models.segmentation.loading ? 'Loading...' : (this.models.segmentation.ready ? 'Ready' : 'Not Loaded'));
+        
+        const ocrStatusEl = document.getElementById('ocr-status-indicator');
+        if(ocrStatusEl) {
+            let status = this.models.ocr.loading ? 'loading' : (this.models.ocr.ready ? 'ready' : 'not-loaded');
+            let message = this.models.ocr.loading ? 'Loading...' : (this.models.ocr.ready ? 'Ready' : 'Not Loaded');
+            ocrStatusEl.parentElement.textContent = `Status: ${message}`;
+        }
     }
 
     loadEnabledModels() {
-        if (this.settings.bodyModeEnabled && !this.models.pose.ready && !this.models.pose.loading) this.loadPoseLandmarker();
-        if (this.settings.handTrackingEnabled && !this.models.hands.ready && !this.models.hands.loading) this.loadHandLandmarker();
+        if (this.settings.bodyModeEnabled && !this.models.pose.instance && !this.models.pose.loading) this.loadPoseLandmarker();
+        if (this.settings.handTrackingEnabled && !this.models.hands.instance && !this.models.hands.loading) this.loadHandLandmarker();
         if (this.settings.expression && !this.models.face.ready && !this.models.face.loading) this.loadFaceAPI();
-        if (this.settings.objectDetectionEnabled && !this.models.objects.ready && !this.models.objects.loading) this.loadObjectDetector();
-        if (this.settings.segmentationEnabled && !this.models.segmentation.ready && !this.models.segmentation.loading) this.loadImageSegmenter();
-        if (this.settings.ocrEnabled && !this.models.ocr.ready && !this.models.ocr.loading) this.setupOcr();
+        if (this.settings.objectDetectionEnabled && !this.models.objects.instance && !this.models.objects.loading) this.loadObjectDetector();
+        if (this.settings.segmentationEnabled && !this.models.segmentation.instance && !this.models.segmentation.loading) this.loadImageSegmenter();
+        // Always set up the OCR button if it exists, but don't auto-load the model until clicked
+        if (document.getElementById('ocr-btn')) this.setupOcr();
     }
 
     async setupCamera() {
@@ -171,8 +188,8 @@ class MimicaApp {
     }
 
     async populateCameraList() {
-        const cameraSelect = document.getElementById('camera-select');
         try {
+            const cameraSelect = document.getElementById('camera-select');
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
             cameraSelect.innerHTML = '';
@@ -261,8 +278,10 @@ class MimicaApp {
                 runningMode: "VIDEO", numPoses: 1
             });
             this.models.pose.ready = true; this.updateStatus('body', 'ready', 'Ready');
-        } catch(error) { console.error('Failed to load pose models.', error); this.updateStatus('body', 'error', 'Error'); } 
-        finally { this.models.pose.loading = false; }
+        } catch(error) { 
+            console.error('Failed to load pose models.', error); 
+            this.updateStatus('body', 'error', 'Error');
+        } finally { this.models.pose.loading = false; }
     }
 
     async loadHandLandmarker() {
@@ -305,15 +324,20 @@ class MimicaApp {
     }
 
     async setupOcr() {
-        this.models.ocr.loading = true; this.updateStatus('ocr-indicator', 'loading', 'Loading...');
+        if (this.models.ocr.instance || this.models.ocr.loading) return;
+        this.models.ocr.loading = true;
+        this.updateAllStatusIndicators();
         try {
             this.tesseractWorker = await Tesseract.createWorker('eng');
+            this.models.ocr.instance = this.tesseractWorker; // Store instance
             this.models.ocr.ready = true;
-            this.updateStatus('ocr-indicator', 'ready', 'Ready');
         } catch (error) {
             console.error("Tesseract.js worker failed to create:", error);
-            this.updateStatus('ocr-indicator', 'error', 'Error');
-        } finally { this.models.ocr.loading = false; }
+            this.models.ocr.ready = false;
+        } finally { 
+            this.models.ocr.loading = false; 
+            this.updateAllStatusIndicators();
+        }
     }
 
     async loadFaceAPI() {
@@ -359,8 +383,8 @@ class MimicaApp {
                     });
                 } else { this.lastSegmentationResult = null; }
 
-                this.detectExpression();
-                // OCR is on-demand, not in the main loop.
+                if (this.settings.expression && this.models.face.ready) this.detectExpression();
+                
                 this.updateDataAndRecording();
                 this.lastVideoTime = this.video.currentTime;
             }
@@ -377,10 +401,7 @@ class MimicaApp {
     }
 
     async detectExpression() {
-        if (!this.settings.expression || !this.models.face.ready) {
-            this.lastExpression = 'disabled';
-            return;
-        };
+        if (!this.settings.expression || !this.models.face.ready) { this.lastExpression = '--'; return; };
         const now = performance.now();
         if (now - (this.lastFaceDetectionTime || 0) < 1000) return;
         this.lastFaceDetectionTime = now;
@@ -391,7 +412,7 @@ class MimicaApp {
     }
 
     async detectText() {
-        if (!this.settings.ocrEnabled || !this.models.ocr.ready || this.isOcrRunning) return;
+        if (!this.models.ocr.ready || this.isOcrRunning) return;
         
         this.isOcrRunning = true;
         const ocrStatus = document.getElementById('ocr-status-text');
@@ -420,16 +441,19 @@ class MimicaApp {
         document.getElementById('ocr-display').textContent = `OCR: ${ocrText}`;
 
         if (this.isRecording) {
-            this.recordedActions.push({
+            const frameData = {
                 timestamp: Math.round(performance.now() - this.recordingStartTime),
                 action: this.settings.bodyModeEnabled ? actionName : null,
                 expression: this.settings.expression ? this.lastExpression : null,
                 pose: this.settings.bodyModeEnabled && this.pose ? this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null) : null,
                 hands: this.settings.handTrackingEnabled && this.lastHandResults ? this.lastHandResults.landmarks : null,
                 objects: this.settings.objectDetectionEnabled && this.lastObjectDetections ? this.lastObjectDetections.detections.map(d => ({ label: d.categories[0].categoryName, score: d.categories[0].score, box: d.boundingBox })) : null,
-                ocr: this.lastOcrResult ? this.lastOcrResult.words.map(w => ({ text: w.text, confidence: w.confidence, bbox: w.bbox })) : null
-            });
-            if (this.lastOcrResult) this.lastOcrResult = null; // Clear after recording frame
+            };
+            if (this.lastOcrResult) {
+                frameData.ocr = this.lastOcrResult.words.map(w => ({ text: w.text, confidence: w.confidence, bbox: w.bbox }));
+                this.lastOcrResult = null;
+            }
+            this.recordedActions.push(frameData);
         }
     }
 
