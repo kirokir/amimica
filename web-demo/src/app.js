@@ -23,7 +23,7 @@ class MimicaApp {
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
         this.objectDetectorReady = false;
-        this.imageSegmenterReady = false; // This model is now on the main thread
+        this.imageSegmenterReady = false;
         this.ocrReady = false;
         this.animationStarted = false;
         
@@ -57,7 +57,7 @@ class MimicaApp {
                 this.loadFaceAPI(),
                 this.loadHandLandmarker(),
                 this.loadObjectDetector(),
-                this.loadImageSegmenter(), // Reverted to main thread loading
+                this.loadImageSegmenter(),
                 this.setupOcr(),
                 this.populateCameraList()
             ]);
@@ -105,7 +105,14 @@ class MimicaApp {
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
             el.addEventListener(isCheckbox ? 'change' : 'input', e => {
-                const value = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
+                // For toggles, we need to reload the app to re-initialize models.
+                if (isCheckbox) {
+                    this.settings[key] = e.target.checked;
+                    this.saveSettings();
+                    window.location.reload();
+                    return;
+                }
+                const value = id.includes('slider') ? parseFloat(e.target.value) : e.target.value;
                 this.settings[key] = value;
                 if (id.includes('slider')) {
                     const valueEl = document.getElementById(id.replace('-slider', '-value'));
@@ -251,11 +258,9 @@ class MimicaApp {
             this.poseLandmarkerReady = true;
         } catch(error) { 
             console.error('Failed to load pose models.', error);
-            this.showError('Failed to load pose models. The app may not function correctly.');
-        } finally { 
-            this.poseLandmarkerReady = true; // Mark as ready anyway to not block other models
-            this.checkAllReady();
-        }
+            this.showError('Failed to load pose models. Body tracking will be disabled.');
+            this.poseLandmarkerReady = true; // Mark ready to not block other features
+        } finally { this.checkAllReady(); }
     }
 
     async loadHandLandmarker() {
@@ -279,7 +284,6 @@ class MimicaApp {
     }
     
     async loadImageSegmenter() {
-        // **FIX**: Load directly on main thread, as worker approach is problematic with MediaPipe Tasks
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
@@ -312,7 +316,7 @@ class MimicaApp {
             if (this.cameraReady && this.video.readyState >= 3 && this.video.currentTime !== this.lastVideoTime) {
                 const startTimeMs = performance.now();
                 
-                if (this.settings.bodyModeEnabled && this.poseLandmarkerReady) {
+                if (this.settings.bodyModeEnabled && this.poseLandmarkerReady && this.poseLandmarker) {
                     const poseResults = this.poseLandmarker.detectForVideo(this.video, startTimeMs);
                     if (poseResults.landmarks && poseResults.landmarks.length > 0) {
                         let points = this.mapper.landmarksToPoints(poseResults.landmarks[0], this.canvas.width, this.canvas.height, this.settings.mirror);
@@ -374,7 +378,7 @@ class MimicaApp {
             return;
         }
         const now = performance.now();
-        if (now - this.lastOcrTime < 2000) return;
+        if (now - this.lastOcrTime < 2000) return; // Run OCR every 2 seconds
         this.lastOcrTime = now;
 
         try {
@@ -409,7 +413,12 @@ class MimicaApp {
     }
 
     render() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (this.isRecording && !this.settings.recordBackground) {
+            this.ctx.fillStyle = '#1a1a1a';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        } else {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
         if ((!this.isRecording || this.settings.recordBackground) && this.cameraReady) {
             this.ctx.save();
             if (this.settings.mirror) { this.ctx.scale(-1, 1); this.ctx.translate(-this.canvas.width, 0); }
