@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MIMICA - Real-time Vision AI</title>
-    <meta name="description" content="Real-time pose, hand, expression, and object tracking with data export.">
+    <meta name="description" content="Real-time pose, hand, expression, object, and text tracking with data export.">
     <link rel="stylesheet" href="web-demo/styles.css">
     <link rel="manifest" href="web-demo/manifest.webmanifest">
     <meta name="theme-color" content="#1a1a1a">
@@ -15,10 +15,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://tesseract.projectnaptha.com; img-src 'self' data: blob:;">
 
     <!-- LIBRARIES -->
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src='https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js'></script>
     <!-- MediaPipe is now imported directly within app.js -->
 </head>
 <body>
@@ -26,12 +27,14 @@
         <header class="header">
             <h1>MIMICA <span class="recording-indicator" id="recording-indicator" style="display: none;">● REC</span></h1>
             <div class="stats">
+                <span id="ocr-display">OCR: --</span>
                 <span id="objects-display">Objects: --</span>
                 <span id="expression-display">Expression: --</span>
                 <span id="action-display">Action: --</span>
                 <span id="fps-counter">FPS: --</span>
             </div>
         </header>
+
         <main class="main-content">
             <div class="video-container" id="video-container">
                 <video id="video" autoplay muted playsinline style="display: none;"></video>
@@ -49,6 +52,7 @@
                     <p>Initializing detection models...</p>
                 </div>
             </div>
+
             <div class="controls-panel">
                  <details class="control-section" open>
                     <summary>Config</summary>
@@ -68,10 +72,14 @@
                         <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation</label>
                     </div>
                     <div class="control-group">
+                        <label><input type="checkbox" id="ocr-toggle"> Enable Text Recognition (OCR)</label>
+                    </div>
+                    <div class="control-group">
                         <label for="camera-select">Camera Source:</label>
                         <select id="camera-select"></select>
                     </div>
                 </details>
+
                 <details class="control-section">
                     <summary>Details</summary>
                      <div class="control-group">
@@ -111,6 +119,7 @@
                         <button id="calibrate-btn" class="btn btn-secondary">Calibrate Pose</button>
                     </div>
                 </details>
+
                  <div class="control-group recording-section">
                     <button id="record-btn" class="btn btn-primary">Start Recording</button>
                     <label>
