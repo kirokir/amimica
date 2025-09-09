@@ -23,14 +23,20 @@ class MimicaApp {
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
         this.objectDetectorReady = false;
-        this.imageSegmenterReady = false;
+        this.segmentationWorkerReady = false;
+        this.ocrReady = false;
         this.animationStarted = false;
         
         this.lastExpression = 'neutral';
         this.lastHandResults = null;
         this.lastObjectDetections = null;
         this.lastSegmentationResult = null;
+        this.lastOcrResult = null;
         this.lastVideoTime = -1;
+        this.lastOcrTime = 0;
+        
+        this.segmentationWorker = null;
+        this.tesseractWorker = null;
 
         this.mediaRecorder = null;
         this.recordedChunks = [];
@@ -52,14 +58,15 @@ class MimicaApp {
                 this.loadFaceAPI(),
                 this.loadHandLandmarker(),
                 this.loadObjectDetector(),
-                this.loadImageSegmenter(),
+                this.setupSegmentationWorker(),
+                this.setupOcr(),
                 this.populateCameraList()
             ]);
         }
     }
 
     checkAllReady() {
-        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && this.objectDetectorReady && this.imageSegmenterReady && !this.animationStarted) {
+        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && this.objectDetectorReady && this.segmentationWorkerReady && this.ocrReady && !this.animationStarted) {
             this.animationStarted = true;
             document.getElementById('loading-message').style.display = 'none';
             this.startAnimation();
@@ -72,7 +79,7 @@ class MimicaApp {
             fpsCap: 30, confidence: 0.5, mirror: true, ik: false,
             recordBackground: true, expression: false, bodyModeEnabled: true,
             handTrackingEnabled: false, selectedCameraId: '',
-            objectDetectionEnabled: false, segmentationEnabled: false
+            objectDetectionEnabled: false, segmentationEnabled: false, ocrEnabled: false
         };
         try {
             const saved = JSON.parse(localStorage.getItem('mimica-settings')) || {};
@@ -86,11 +93,12 @@ class MimicaApp {
         const controls = {
             'body-mode-toggle': 'bodyModeEnabled', 'hand-tracking-toggle': 'handTrackingEnabled',
             'expression-toggle': 'expression', 'object-detection-toggle': 'objectDetectionEnabled',
-            'segmentation-toggle': 'segmentationEnabled', 'camera-select': 'selectedCameraId',
-            'character-mode-select': 'characterMode', 'resolution-select': 'resolution', 
-            'smoothing-slider': 'smoothing', 'fps-slider': 'fpsCap',
-            'confidence-slider': 'confidence', 'mirror-toggle': 'mirror', 
-            'ik-toggle': 'ik', 'record-background-toggle': 'recordBackground'
+            'segmentation-toggle': 'segmentationEnabled', 'ocr-toggle': 'ocrEnabled', 
+            'camera-select': 'selectedCameraId', 'character-mode-select': 'characterMode', 
+            'resolution-select': 'resolution', 'smoothing-slider': 'smoothing', 
+            'fps-slider': 'fpsCap', 'confidence-slider': 'confidence', 
+            'mirror-toggle': 'mirror', 'ik-toggle': 'ik', 
+            'record-background-toggle': 'recordBackground'
         };
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
@@ -238,11 +246,14 @@ class MimicaApp {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "CPU" },
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task`, delegate: "CPU" },
                 runningMode: "VIDEO", numPoses: 1
             });
             this.poseLandmarkerReady = true;
-        } catch(error) { this.showError('Failed to load pose models.'); } finally { this.checkAllReady(); }
+        } catch(error) { 
+            console.error('Failed to load pose models.', error);
+            this.showError('Failed to load pose models.');
+        } finally { this.checkAllReady(); }
     }
 
     async loadHandLandmarker() {
@@ -259,22 +270,40 @@ class MimicaApp {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.objectDetector = await ObjectDetector.createFromOptions(vision, {
-                // **FIX**: Use correct model path and force CPU delegate for stability
                 baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite', delegate: 'CPU' },
                 runningMode: 'VIDEO', maxResults: 5
             });
         } catch (error) { console.error("Object Detector failed to load:", error); } finally { this.objectDetectorReady = true; this.checkAllReady(); }
     }
     
-    async loadImageSegmenter() {
+    async setupSegmentationWorker() {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
-            this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
-                // **FIX**: Use correct model path and force CPU delegate for stability
-                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite', delegate: 'CPU' },
-                runningMode: 'VIDEO', outputCategoryMask: true,
-            });
-        } catch(error) { console.error("Image Segmenter failed to load:", error); } finally { this.imageSegmenterReady = true; this.checkAllReady(); }
+            this.segmentationWorker = new Worker(new URL('./segmentation-worker.js', import.meta.url), { type: 'module' });
+            this.segmentationWorker.onmessage = (event) => {
+                if (event.data.type === 'INITIALIZED') {
+                    this.segmentationWorkerReady = true;
+                    this.checkAllReady();
+                } else if (event.data.type === 'RESULT') {
+                    this.lastSegmentationResult = event.data.result;
+                } else if (event.data.type === 'ERROR') {
+                    console.error("Segmentation worker error:", event.data.error);
+                }
+            };
+            this.segmentationWorker.postMessage({ type: 'INITIALIZE' });
+        } catch (error) {
+            console.error("Segmentation worker setup failed:", error);
+            this.segmentationWorkerReady = true; 
+            this.checkAllReady();
+        }
+    }
+    
+    async setupOcr() {
+        try {
+            this.tesseractWorker = await Tesseract.createWorker('eng');
+            this.ocrReady = true;
+        } catch (error) {
+            console.error("Tesseract.js worker failed to create:", error);
+        } finally { this.checkAllReady(); }
     }
 
     async loadFaceAPI() {
@@ -293,7 +322,6 @@ class MimicaApp {
                 
                 if (this.settings.bodyModeEnabled && this.poseLandmarkerReady) {
                     const poseResults = this.poseLandmarker.detectForVideo(this.video, startTimeMs);
-                    document.getElementById('inference-time').textContent = `Pose: ${(performance.now() - startTimeMs).toFixed(0)}ms`;
                     if (poseResults.landmarks && poseResults.landmarks.length > 0) {
                         let points = this.mapper.landmarksToPoints(poseResults.landmarks[0], this.canvas.width, this.canvas.height, this.settings.mirror);
                         const smoothedPoints = this.smoother.smooth(points);
@@ -309,13 +337,18 @@ class MimicaApp {
                     this.lastObjectDetections = this.objectDetector.detectForVideo(this.video, startTimeMs);
                 } else { this.lastObjectDetections = null; }
                 
-                if (this.settings.segmentationEnabled && this.imageSegmenterReady) {
-                    this.imageSegmenter.segmentForVideo(this.video, startTimeMs, (result) => {
-                        this.lastSegmentationResult = result;
-                    });
+                if (this.settings.segmentationEnabled && this.segmentationWorkerReady) {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = this.video.videoWidth;
+                    tempCanvas.height = this.video.videoHeight;
+                    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+                    tempCtx.drawImage(this.video, 0, 0, tempCanvas.width, tempCanvas.height);
+                    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                    this.segmentationWorker.postMessage({ type: 'SEGMENT', imageData });
                 } else { this.lastSegmentationResult = null; }
 
                 this.detectExpression();
+                this.detectText();
                 this.updateDataAndRecording();
                 this.lastVideoTime = this.video.currentTime;
             }
@@ -347,12 +380,32 @@ class MimicaApp {
         } catch (error) { this.lastExpression = 'error'; }
     }
 
+    async detectText() {
+        if (!this.ocrReady || !this.settings.ocrEnabled) {
+            this.lastOcrResult = null;
+            return;
+        }
+        const now = performance.now();
+        if (now - this.lastOcrTime < 2000) return; // Run OCR every 2 seconds
+        this.lastOcrTime = now;
+
+        try {
+            const { data } = await this.tesseractWorker.recognize(this.canvas);
+            this.lastOcrResult = data;
+        } catch (error) {
+            console.error("OCR recognition failed:", error);
+            this.lastOcrResult = null;
+        }
+    }
+
     updateDataAndRecording() {
         const actionName = this.pose ? this.actionRecognizer.recognize(this.pose) : "unknown";
         document.getElementById('action-display').textContent = `Action: ${this.settings.bodyModeEnabled ? actionName : '--'}`;
         document.getElementById('expression-display').textContent = `Expression: ${this.settings.expression ? this.lastExpression : '--'}`;
         const objectNames = this.lastObjectDetections?.detections.map(d => d.categories[0].categoryName).join(', ') || '--';
         document.getElementById('objects-display').textContent = `Objects: ${this.settings.objectDetectionEnabled ? objectNames : '--'}`;
+        const ocrText = this.lastOcrResult?.text.trim().substring(0, 15) || '--';
+        document.getElementById('ocr-display').textContent = `OCR: ${this.settings.ocrEnabled ? ocrText : '--'}`;
 
         if (this.isRecording) {
             this.recordedActions.push({
@@ -361,18 +414,14 @@ class MimicaApp {
                 expression: this.settings.expression ? this.lastExpression : null,
                 pose: this.settings.bodyModeEnabled && this.pose ? this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null) : null,
                 hands: this.settings.handTrackingEnabled && this.lastHandResults ? this.lastHandResults.landmarks : null,
-                objects: this.settings.objectDetectionEnabled && this.lastObjectDetections ? this.lastObjectDetections.detections.map(d => ({ label: d.categories[0].categoryName, score: d.categories[0].score, box: d.boundingBox })) : null
+                objects: this.settings.objectDetectionEnabled && this.lastObjectDetections ? this.lastObjectDetections.detections.map(d => ({ label: d.categories[0].categoryName, score: d.categories[0].score, box: d.boundingBox })) : null,
+                ocr: this.settings.ocrEnabled && this.lastOcrResult ? this.lastOcrResult.words.map(w => ({ text: w.text, confidence: w.confidence, bbox: w.bbox })) : null
             });
         }
     }
 
     render() {
-        if (this.isRecording && !this.settings.recordBackground) {
-            this.ctx.fillStyle = '#1a1a1a';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        } else {
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        }
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         if ((!this.isRecording || this.settings.recordBackground) && this.cameraReady) {
             this.ctx.save();
             if (this.settings.mirror) { this.ctx.scale(-1, 1); this.ctx.translate(-this.canvas.width, 0); }
@@ -397,6 +446,9 @@ class MimicaApp {
         }
         if (this.settings.objectDetectionEnabled && this.lastObjectDetections) {
             this.renderer.drawObjectDetections(this.lastObjectDetections.detections, this.settings.mirror);
+        }
+        if (this.settings.ocrEnabled && this.lastOcrResult) {
+            this.renderer.drawOcrResults(this.lastOcrResult, this.settings.mirror);
         }
     }
     
