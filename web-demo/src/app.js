@@ -19,13 +19,16 @@ class MimicaApp {
         this.settings = this.loadSettings();
         
         this.cameraReady = false;
-        this.poseLandmarkerReady = false;
-        this.faceApiReady = false;
-        this.handLandmarkerReady = false;
-        this.objectDetectorReady = false;
-        this.imageSegmenterReady = false;
-        this.ocrReady = false;
         this.animationStarted = false;
+        
+        this.models = {
+            pose: { ready: false, loading: false, instance: null },
+            hands: { ready: false, loading: false, instance: null },
+            face: { ready: false, loading: false },
+            objects: { ready: false, loading: false, instance: null },
+            segmentation: { ready: false, loading: false, instance: null },
+            ocr: { ready: false, loading: false, instance: null },
+        };
         
         this.lastExpression = 'neutral';
         this.lastHandResults = null;
@@ -33,9 +36,7 @@ class MimicaApp {
         this.lastSegmentationResult = null;
         this.lastOcrResult = null;
         this.lastVideoTime = -1;
-        this.lastOcrTime = 0;
-        
-        this.tesseractWorker = null;
+        this.isOcrRunning = false;
 
         this.mediaRecorder = null;
         this.recordedChunks = [];
@@ -51,23 +52,8 @@ class MimicaApp {
         await this.setupCamera();
         
         if (this.cameraReady) {
-            document.getElementById('loading-message').style.display = 'flex';
-            await Promise.all([
-                this.loadPoseLandmarker(),
-                this.loadFaceAPI(),
-                this.loadHandLandmarker(),
-                this.loadObjectDetector(),
-                this.loadImageSegmenter(),
-                this.setupOcr(),
-                this.populateCameraList()
-            ]);
-        }
-    }
-
-    checkAllReady() {
-        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && this.objectDetectorReady && this.imageSegmenterReady && this.ocrReady && !this.animationStarted) {
-            this.animationStarted = true;
             document.getElementById('loading-message').style.display = 'none';
+            this.loadEnabledModels(); // Pre-load models based on saved settings
             this.startAnimation();
         }
     }
@@ -76,7 +62,7 @@ class MimicaApp {
         const defaults = {
             characterMode: 'blocky', resolution: '640x360', smoothing: 0.3, 
             fpsCap: 30, confidence: 0.5, mirror: true, ik: false,
-            recordBackground: true, expression: false, bodyModeEnabled: true,
+            recordBackground: true, expression: false, bodyModeEnabled: false,
             handTrackingEnabled: false, selectedCameraId: '',
             objectDetectionEnabled: false, segmentationEnabled: false, ocrEnabled: false
         };
@@ -99,43 +85,60 @@ class MimicaApp {
             'mirror-toggle': 'mirror', 'ik-toggle': 'ik', 
             'record-background-toggle': 'recordBackground'
         };
+        
         for (const [id, key] of Object.entries(controls)) {
             const el = document.getElementById(id);
             if (!el) continue;
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
             el.addEventListener(isCheckbox ? 'change' : 'input', e => {
-                // For toggles that load/unload major models, a refresh is the safest approach
-                if (['bodyModeEnabled', 'handTrackingEnabled', 'expression', 'objectDetectionEnabled', 'segmentationEnabled', 'ocrEnabled'].includes(key)) {
-                    this.settings[key] = e.target.checked;
-                    this.saveSettings();
-                    window.location.reload();
-                    return;
-                }
-
-                const value = id.includes('slider') ? parseFloat(e.target.value) : e.target.value;
+                const value = isCheckbox ? e.target.checked : (id.includes('slider') ? parseFloat(e.target.value) : e.target.value);
                 this.settings[key] = value;
-                if (id.includes('slider')) {
-                    const valueEl = document.getElementById(id.replace('-slider', '-value'));
-                    if (valueEl) valueEl.textContent = value.toFixed(1);
-                }
-                if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
-                if (key === 'resolution' || key === 'selectedCameraId') this.setupCamera();
                 this.saveSettings();
+                
+                if (isCheckbox) this.loadEnabledModels(); // Lazy-load model on toggle
+                if (key === 'resolution' || key === 'selectedCameraId') window.location.reload();
+                if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
             });
             if (id.includes('slider')) {
-                const valueEl = document.getElementById(id.replace('-slider', '-value'));
-                if (valueEl) valueEl.textContent = this.settings[key].toFixed(1);
+                document.getElementById(id.replace('-slider', '-value')).textContent = this.settings[key].toFixed(1);
             }
         }
+        
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
-        document.getElementById('retry-camera').addEventListener('click', () => window.location.reload(true)); // Hard refresh
-        document.getElementById('record-btn').addEventListener('click', () => {
-            if (this.isRecording) { this.stopRecording(); } else { this.startRecording(); }
-        });
+        document.getElementById('retry-camera-btn').addEventListener('click', () => window.location.reload(true)); // Hard refresh
+        document.getElementById('record-btn').addEventListener('click', () => { if (this.isRecording) this.stopRecording(); else this.startRecording(); });
         document.getElementById('fullscreen-btn').addEventListener('click', () => this.toggleFullScreen());
+        document.getElementById('ocr-btn').addEventListener('click', () => this.detectText());
+        
+        this.updateAllStatusIndicators();
     }
     
+    updateStatus(modelKey, status, message) {
+        const el = document.getElementById(`${modelKey}-status`);
+        if (!el) return;
+        el.textContent = `(${message})`;
+        el.className = `status-indicator status-${status}`;
+    }
+
+    updateAllStatusIndicators() {
+        this.updateStatus('body', this.models.pose.ready ? 'ready' : (this.models.pose.loading ? 'loading' : 'not-loaded'), this.models.pose.ready ? 'Ready' : (this.models.pose.loading ? 'Loading...' : 'Not Loaded'));
+        this.updateStatus('hand', this.models.hands.ready ? 'ready' : (this.models.hands.loading ? 'loading' : 'not-loaded'), this.models.hands.ready ? 'Ready' : (this.models.hands.loading ? 'Loading...' : 'Not Loaded'));
+        this.updateStatus('expression', this.models.face.ready ? 'ready' : (this.models.face.loading ? 'loading' : 'not-loaded'), this.models.face.ready ? 'Ready' : (this.models.face.loading ? 'Loading...' : 'Not Loaded'));
+        this.updateStatus('object', this.models.objects.ready ? 'ready' : (this.models.objects.loading ? 'loading' : 'not-loaded'), this.models.objects.ready ? 'Ready' : (this.models.objects.loading ? 'Loading...' : 'Not Loaded'));
+        this.updateStatus('segmentation', this.models.segmentation.ready ? 'ready' : (this.models.segmentation.loading ? 'loading' : 'not-loaded'), this.models.segmentation.ready ? 'Ready' : (this.models.segmentation.loading ? 'Loading...' : 'Not Loaded'));
+        this.updateStatus('ocr-indicator', this.models.ocr.ready ? 'ready' : (this.models.ocr.loading ? 'loading' : 'not-loaded'), this.models.ocr.ready ? 'Ready' : (this.models.ocr.loading ? 'Loading...' : 'Not Loaded'));
+    }
+
+    loadEnabledModels() {
+        if (this.settings.bodyModeEnabled && !this.models.pose.ready && !this.models.pose.loading) this.loadPoseLandmarker();
+        if (this.settings.handTrackingEnabled && !this.models.hands.ready && !this.models.hands.loading) this.loadHandLandmarker();
+        if (this.settings.expression && !this.models.face.ready && !this.models.face.loading) this.loadFaceAPI();
+        if (this.settings.objectDetectionEnabled && !this.models.objects.ready && !this.models.objects.loading) this.loadObjectDetector();
+        if (this.settings.segmentationEnabled && !this.models.segmentation.ready && !this.models.segmentation.loading) this.loadImageSegmenter();
+        if (this.settings.ocrEnabled && !this.models.ocr.ready && !this.models.ocr.loading) this.setupOcr();
+    }
+
     async setupCamera() {
         this.cameraReady = false;
         document.getElementById('error-message').style.display = 'none';
@@ -250,81 +253,91 @@ class MimicaApp {
     }
 
     async loadPoseLandmarker() {
-        if (!this.settings.bodyModeEnabled) { this.poseLandmarkerReady = true; this.checkAllReady(); return; }
+        this.models.pose.loading = true; this.updateStatus('body', 'loading', 'Loading...');
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
-            this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task`, delegate: "CPU" },
+            this.models.pose.instance = await PoseLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "CPU" },
                 runningMode: "VIDEO", numPoses: 1
             });
-            this.poseLandmarkerReady = true;
-        } catch(error) { 
-            console.error('Failed to load pose models.', error);
-            this.showError('Failed to load pose models.');
-            this.poseLandmarkerReady = true; // Mark ready to not block other features
-        } finally { this.checkAllReady(); }
+            this.models.pose.ready = true; this.updateStatus('body', 'ready', 'Ready');
+        } catch(error) { console.error('Failed to load pose models.', error); this.updateStatus('body', 'error', 'Error'); } 
+        finally { this.models.pose.loading = false; }
     }
 
     async loadHandLandmarker() {
-        if (!this.settings.handTrackingEnabled) { this.handLandmarkerReady = true; this.checkAllReady(); return; }
+        this.models.hands.loading = true; this.updateStatus('hand', 'loading', 'Loading...');
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
-            this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            this.models.hands.instance = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "CPU" },
                 runningMode: "VIDEO", numHands: 2
             });
-        } catch (error) { console.error("Hand Landmarker failed to load:", error); } finally { this.handLandmarkerReady = true; this.checkAllReady(); }
+            this.models.hands.ready = true; this.updateStatus('hand', 'ready', 'Ready');
+        } catch (error) { console.error("Hand Landmarker failed to load:", error); this.updateStatus('hand', 'error', 'Error'); } 
+        finally { this.models.hands.loading = false; }
     }
 
     async loadObjectDetector() {
-        if (!this.settings.objectDetectionEnabled) { this.objectDetectorReady = true; this.checkAllReady(); return; }
+        this.models.objects.loading = true; this.updateStatus('object', 'loading', 'Loading...');
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
-            this.objectDetector = await ObjectDetector.createFromOptions(vision, {
+            this.models.objects.instance = await ObjectDetector.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite', delegate: 'CPU' },
                 runningMode: 'VIDEO', maxResults: 5
             });
-        } catch (error) { console.error("Object Detector failed to load:", error); } finally { this.objectDetectorReady = true; this.checkAllReady(); }
+            this.models.objects.ready = true; this.updateStatus('object', 'ready', 'Ready');
+        } catch (error) { console.error("Object Detector failed to load:", error); this.updateStatus('object', 'error', 'Error'); } 
+        finally { this.models.objects.loading = false; }
     }
     
     async loadImageSegmenter() {
-        if (!this.settings.segmentationEnabled) { this.imageSegmenterReady = true; this.checkAllReady(); return; }
+        this.models.segmentation.loading = true; this.updateStatus('segmentation', 'loading', 'Loading...');
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
-            this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+            this.models.segmentation.instance = await ImageSegmenter.createFromOptions(vision, {
                 baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite', delegate: 'CPU' },
                 runningMode: 'VIDEO', outputCategoryMask: true,
             });
-        } catch(error) { console.error("Image Segmenter failed to load:", error); } finally { this.imageSegmenterReady = true; this.checkAllReady(); }
+            this.models.segmentation.ready = true; this.updateStatus('segmentation', 'ready', 'Ready');
+        } catch(error) { console.error("Image Segmenter failed to load:", error); this.updateStatus('segmentation', 'error', 'Error'); } 
+        finally { this.models.segmentation.loading = false; }
     }
 
     async setupOcr() {
-        if (!this.settings.ocrEnabled) { this.ocrReady = true; this.checkAllReady(); return; }
+        this.models.ocr.loading = true; this.updateStatus('ocr-indicator', 'loading', 'Loading...');
         try {
             this.tesseractWorker = await Tesseract.createWorker('eng');
-            this.ocrReady = true;
+            this.models.ocr.ready = true;
+            this.updateStatus('ocr-indicator', 'ready', 'Ready');
         } catch (error) {
             console.error("Tesseract.js worker failed to create:", error);
-        } finally { this.checkAllReady(); }
+            this.updateStatus('ocr-indicator', 'error', 'Error');
+        } finally { this.models.ocr.loading = false; }
     }
 
     async loadFaceAPI() {
-        if (!this.settings.expression) { this.faceApiReady = true; this.checkAllReady(); return; }
+        this.models.face.loading = true; this.updateStatus('expression', 'loading', 'Loading...');
         try {
             await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
-        } catch (error) { console.error('face-api.js models failed to load:', error); } finally { this.faceApiReady = true; this.checkAllReady(); }
+            this.models.face.ready = true;
+            this.updateStatus('expression', 'ready', 'Ready');
+        } catch (error) { console.error('face-api.js models failed to load:', error); this.updateStatus('expression', 'error', 'Error'); } 
+        finally { this.models.face.loading = false; }
     }
     
     startAnimation() {
+        if (this.animationStarted) return;
+        this.animationStarted = true;
         let lastFpsTime = performance.now();
         let frameCount = 0;
         const animate = (now) => {
             if (this.cameraReady && this.video.readyState >= 3 && this.video.currentTime !== this.lastVideoTime) {
                 const startTimeMs = performance.now();
                 
-                if (this.settings.bodyModeEnabled && this.poseLandmarkerReady && this.poseLandmarker) {
-                    const poseResults = this.poseLandmarker.detectForVideo(this.video, startTimeMs);
+                if (this.settings.bodyModeEnabled && this.models.pose.ready) {
+                    const poseResults = this.models.pose.instance.detectForVideo(this.video, startTimeMs);
                     if (poseResults.landmarks && poseResults.landmarks.length > 0) {
                         let points = this.mapper.landmarksToPoints(poseResults.landmarks[0], this.canvas.width, this.canvas.height, this.settings.mirror);
                         const smoothedPoints = this.smoother.smooth(points);
@@ -332,22 +345,22 @@ class MimicaApp {
                     }
                 } else { this.pose = null; }
 
-                if (this.settings.handTrackingEnabled && this.handLandmarkerReady) {
-                    this.lastHandResults = this.handLandmarker.detectForVideo(this.video, startTimeMs);
+                if (this.settings.handTrackingEnabled && this.models.hands.ready) {
+                    this.lastHandResults = this.models.hands.instance.detectForVideo(this.video, startTimeMs);
                 } else { this.lastHandResults = null; }
 
-                if (this.settings.objectDetectionEnabled && this.objectDetectorReady) {
-                    this.lastObjectDetections = this.objectDetector.detectForVideo(this.video, startTimeMs);
+                if (this.settings.objectDetectionEnabled && this.models.objects.ready) {
+                    this.lastObjectDetections = this.models.objects.instance.detectForVideo(this.video, startTimeMs);
                 } else { this.lastObjectDetections = null; }
                 
-                if (this.settings.segmentationEnabled && this.imageSegmenterReady) {
-                    this.imageSegmenter.segmentForVideo(this.video, startTimeMs, (result) => {
+                if (this.settings.segmentationEnabled && this.models.segmentation.ready) {
+                    this.models.segmentation.instance.segmentForVideo(this.video, startTimeMs, (result) => {
                         this.lastSegmentationResult = result;
                     });
                 } else { this.lastSegmentationResult = null; }
 
                 this.detectExpression();
-                this.detectText();
+                // OCR is on-demand, not in the main loop.
                 this.updateDataAndRecording();
                 this.lastVideoTime = this.video.currentTime;
             }
@@ -364,7 +377,7 @@ class MimicaApp {
     }
 
     async detectExpression() {
-        if (!this.faceApiReady || !this.settings.expression) {
+        if (!this.settings.expression || !this.models.face.ready) {
             this.lastExpression = 'disabled';
             return;
         };
@@ -373,27 +386,27 @@ class MimicaApp {
         this.lastFaceDetectionTime = now;
         try {
             const detections = await faceapi.detectSingleFace(this.video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
-            if (detections && detections.expressions) {
-                this.lastExpression = Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b);
-            }
+            this.lastExpression = detections ? Object.keys(detections.expressions).reduce((a, b) => detections.expressions[a] > detections.expressions[b] ? a : b) : 'none';
         } catch (error) { this.lastExpression = 'error'; }
     }
 
     async detectText() {
-        if (!this.ocrReady || !this.settings.ocrEnabled) {
-            this.lastOcrResult = null;
-            return;
-        }
-        const now = performance.now();
-        if (now - this.lastOcrTime < 2000) return;
-        this.lastOcrTime = now;
-
+        if (!this.settings.ocrEnabled || !this.models.ocr.ready || this.isOcrRunning) return;
+        
+        this.isOcrRunning = true;
+        const ocrStatus = document.getElementById('ocr-status-text');
+        ocrStatus.textContent = 'Status: Scanning...';
+        
         try {
             const { data } = await this.tesseractWorker.recognize(this.canvas);
             this.lastOcrResult = data;
+            ocrStatus.textContent = `Status: Done (${data.confidence.toFixed(1)}% confidence)`;
         } catch (error) {
             console.error("OCR recognition failed:", error);
             this.lastOcrResult = null;
+            ocrStatus.textContent = 'Status: Error';
+        } finally {
+            this.isOcrRunning = false;
         }
     }
 
@@ -403,8 +416,8 @@ class MimicaApp {
         document.getElementById('expression-display').textContent = `Expression: ${this.settings.expression ? this.lastExpression : '--'}`;
         const objectNames = this.lastObjectDetections?.detections.map(d => d.categories[0].categoryName).join(', ') || '--';
         document.getElementById('objects-display').textContent = `Objects: ${this.settings.objectDetectionEnabled ? objectNames : '--'}`;
-        const ocrText = this.lastOcrResult?.text.trim().substring(0, 15) || '--';
-        document.getElementById('ocr-display').textContent = `OCR: ${this.settings.ocrEnabled ? ocrText : '--'}`;
+        const ocrText = this.lastOcrResult?.text.trim().substring(0, 20) || '--';
+        document.getElementById('ocr-display').textContent = `OCR: ${ocrText}`;
 
         if (this.isRecording) {
             this.recordedActions.push({
@@ -414,8 +427,9 @@ class MimicaApp {
                 pose: this.settings.bodyModeEnabled && this.pose ? this.pose.map(p => p ? {x: Math.round(p.x), y: Math.round(p.y)} : null) : null,
                 hands: this.settings.handTrackingEnabled && this.lastHandResults ? this.lastHandResults.landmarks : null,
                 objects: this.settings.objectDetectionEnabled && this.lastObjectDetections ? this.lastObjectDetections.detections.map(d => ({ label: d.categories[0].categoryName, score: d.categories[0].score, box: d.boundingBox })) : null,
-                ocr: this.settings.ocrEnabled && this.lastOcrResult ? this.lastOcrResult.words.map(w => ({ text: w.text, confidence: w.confidence, bbox: w.bbox })) : null
+                ocr: this.lastOcrResult ? this.lastOcrResult.words.map(w => ({ text: w.text, confidence: w.confidence, bbox: w.bbox })) : null
             });
+            if (this.lastOcrResult) this.lastOcrResult = null; // Clear after recording frame
         }
     }
 
@@ -446,7 +460,7 @@ class MimicaApp {
         if (this.settings.objectDetectionEnabled && this.lastObjectDetections) {
             this.renderer.drawObjectDetections(this.lastObjectDetections.detections, this.settings.mirror);
         }
-        if (this.settings.ocrEnabled && this.lastOcrResult) {
+        if (this.lastOcrResult) {
             this.renderer.drawOcrResults(this.lastOcrResult, this.settings.mirror);
         }
     }
