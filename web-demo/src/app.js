@@ -105,13 +105,14 @@ class MimicaApp {
             const isCheckbox = el.type === 'checkbox';
             el[isCheckbox ? 'checked' : 'value'] = this.settings[key];
             el.addEventListener(isCheckbox ? 'change' : 'input', e => {
-                // For toggles, we need to reload the app to re-initialize models.
-                if (isCheckbox) {
+                // For toggles that load/unload major models, a refresh is the safest approach
+                if (['bodyModeEnabled', 'handTrackingEnabled', 'expression', 'objectDetectionEnabled', 'segmentationEnabled', 'ocrEnabled'].includes(key)) {
                     this.settings[key] = e.target.checked;
                     this.saveSettings();
                     window.location.reload();
                     return;
                 }
+
                 const value = id.includes('slider') ? parseFloat(e.target.value) : e.target.value;
                 this.settings[key] = value;
                 if (id.includes('slider')) {
@@ -128,7 +129,7 @@ class MimicaApp {
             }
         }
         document.getElementById('calibrate-btn').addEventListener('click', () => this.smoother.reset());
-        document.getElementById('retry-camera').addEventListener('click', () => window.location.reload());
+        document.getElementById('retry-camera').addEventListener('click', () => window.location.reload(true)); // Hard refresh
         document.getElementById('record-btn').addEventListener('click', () => {
             if (this.isRecording) { this.stopRecording(); } else { this.startRecording(); }
         });
@@ -249,6 +250,7 @@ class MimicaApp {
     }
 
     async loadPoseLandmarker() {
+        if (!this.settings.bodyModeEnabled) { this.poseLandmarkerReady = true; this.checkAllReady(); return; }
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
@@ -258,12 +260,13 @@ class MimicaApp {
             this.poseLandmarkerReady = true;
         } catch(error) { 
             console.error('Failed to load pose models.', error);
-            this.showError('Failed to load pose models. Body tracking will be disabled.');
+            this.showError('Failed to load pose models.');
             this.poseLandmarkerReady = true; // Mark ready to not block other features
         } finally { this.checkAllReady(); }
     }
 
     async loadHandLandmarker() {
+        if (!this.settings.handTrackingEnabled) { this.handLandmarkerReady = true; this.checkAllReady(); return; }
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
@@ -274,6 +277,7 @@ class MimicaApp {
     }
 
     async loadObjectDetector() {
+        if (!this.settings.objectDetectionEnabled) { this.objectDetectorReady = true; this.checkAllReady(); return; }
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.objectDetector = await ObjectDetector.createFromOptions(vision, {
@@ -284,6 +288,7 @@ class MimicaApp {
     }
     
     async loadImageSegmenter() {
+        if (!this.settings.segmentationEnabled) { this.imageSegmenterReady = true; this.checkAllReady(); return; }
         try {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
@@ -294,6 +299,7 @@ class MimicaApp {
     }
 
     async setupOcr() {
+        if (!this.settings.ocrEnabled) { this.ocrReady = true; this.checkAllReady(); return; }
         try {
             this.tesseractWorker = await Tesseract.createWorker('eng');
             this.ocrReady = true;
@@ -303,6 +309,7 @@ class MimicaApp {
     }
 
     async loadFaceAPI() {
+        if (!this.settings.expression) { this.faceApiReady = true; this.checkAllReady(); return; }
         try {
             await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
             await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model');
@@ -378,7 +385,7 @@ class MimicaApp {
             return;
         }
         const now = performance.now();
-        if (now - this.lastOcrTime < 2000) return; // Run OCR every 2 seconds
+        if (now - this.lastOcrTime < 2000) return;
         this.lastOcrTime = now;
 
         try {
@@ -413,12 +420,7 @@ class MimicaApp {
     }
 
     render() {
-        if (this.isRecording && !this.settings.recordBackground) {
-            this.ctx.fillStyle = '#1a1a1a';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        } else {
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        }
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         if ((!this.isRecording || this.settings.recordBackground) && this.cameraReady) {
             this.ctx.save();
             if (this.settings.mirror) { this.ctx.scale(-1, 1); this.ctx.translate(-this.canvas.width, 0); }
