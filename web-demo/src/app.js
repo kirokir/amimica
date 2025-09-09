@@ -53,26 +53,27 @@ class MimicaApp {
         
         if (this.cameraReady) {
             document.getElementById('loading-message').style.display = 'none';
+            await this.populateCameraList();
             this.loadEnabledModels();
-            this.displaySystemInfo(); // Now this function exists
+            this.displaySystemInfo();
             this.startAnimation();
         }
     }
 
-    // **NEW FUNCTION**: Displays system and browser info in the footer.
+    // **DEFINITIVE FIX**: Added the missing function
     displaySystemInfo() {
         const infoEl = document.getElementById('system-info');
         if (!infoEl) return;
 
-        const browserInfo = navigator.userAgent || "N/A";
+        const browserInfo = navigator.userAgentData?.brands?.map(b => `${b.brand} ${b.version}`).join(', ') || navigator.userAgent;
         const platform = navigator.platform || "N/A";
         const connection = navigator.connection || {};
-        const networkInfo = connection.effectiveType ? `${connection.effectiveType} (${connection.downlink} Mbps)` : "N/A";
+        const networkInfo = connection.effectiveType ? `${connection.effectiveType} (${connection.downlink || '?'} Mbps)` : "N/A";
 
         infoEl.innerHTML = `
             <span>OS: ${platform}</span> | 
             <span>Network: ${networkInfo}</span> | 
-            <span>Browser: ${browserInfo.substring(0, 100)}...</span>
+            <span>Browser: ${browserInfo}</span>
         `;
     }
 
@@ -120,13 +121,12 @@ class MimicaApp {
                 
                 if (isCheckbox || key === 'resolution' || key === 'selectedCameraId') {
                     window.location.reload();
-                } else if (key === 'smoothing') {
-                    this.smoother.setAlpha(this.settings.smoothing);
-                }
-                
-                if (id.includes('slider')) {
-                    const valueEl = document.getElementById(id.replace('-slider', '-value'));
-                    if (valueEl) valueEl.textContent = parseFloat(value).toFixed(1);
+                } else {
+                     if (key === 'smoothing') this.smoother.setAlpha(this.settings.smoothing);
+                     if (id.includes('slider')) {
+                        const valueEl = document.getElementById(id.replace('-slider', '-value'));
+                        if (valueEl) valueEl.textContent = parseFloat(value).toFixed(1);
+                    }
                 }
             });
 
@@ -431,8 +431,12 @@ class MimicaApp {
     }
 
     async detectText() {
-        if (!this.settings.ocrEnabled || !this.models.ocr.ready || this.isOcrRunning) {
-            if (!this.models.ocr.ready) alert("OCR model is not loaded yet. Please enable it in Config and wait for it to be Ready.");
+        if (!this.settings.ocrEnabled) {
+            alert("Please enable Text Recognition in the Config section first.");
+            return;
+        }
+        if (!this.models.ocr.ready || this.isOcrRunning) {
+            if (!this.models.ocr.ready) alert("OCR model is still loading. Please wait for the status to become 'Ready'.");
             return;
         }
         
@@ -513,13 +517,11 @@ class MimicaApp {
     
     showError(message) {
         const errorDiv = document.getElementById('error-message');
-        const retryBtn = document.getElementById('retry-camera-btn');
         const refreshBtn = document.getElementById('refresh-btn');
         if (errorDiv) {
             errorDiv.querySelector('p').textContent = message;
             errorDiv.style.display = 'flex';
         }
-        if (retryBtn) retryBtn.style.display = 'none'; // Hide retry button, show hard refresh
         if (refreshBtn) refreshBtn.style.display = 'block';
         
         document.getElementById('loading-message').style.display = 'none';
