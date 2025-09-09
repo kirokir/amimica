@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
-    <!-- Final, Corrected Content Security Policy -->
+    <!-- **DEFINITIVE, FINAL CONTENT SECURITY POLICY** -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com;
@@ -85,7 +85,7 @@
                 <details class="control-section">
                     <summary>Hardware Intensive</summary>
                     <p class="info-text">
-                        Warning: These features are computationally expensive and may cause lag on devices without a dedicated GPU.
+                        Warning: These features are computationally expensive and may cause lag on devices without a dedicated GPU and sufficient RAM.
                     </p>
                     <div class="control-group">
                         <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation <span class="status-indicator status-not-loaded" id="segmentation-status">(Not Loaded)</span></label>
@@ -163,6 +163,8 @@
             <p style="margin-top: 0.5rem;">
                 <a href="MIMICA( Data to Video Renderer ).html" class="btn btn-secondary">Run Data to Video Renderer</a>
             </p>
+            <!-- NEW: System Info Display -->
+            <div id="system-info" class="system-info"></div>
         </footer>
     </div>
     
