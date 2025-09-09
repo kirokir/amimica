@@ -23,7 +23,7 @@ class MimicaApp {
         this.faceApiReady = false;
         this.handLandmarkerReady = false;
         this.objectDetectorReady = false;
-        this.segmentationWorkerReady = false;
+        this.imageSegmenterReady = false; // This model is now on the main thread
         this.ocrReady = false;
         this.animationStarted = false;
         
@@ -35,7 +35,6 @@ class MimicaApp {
         this.lastVideoTime = -1;
         this.lastOcrTime = 0;
         
-        this.segmentationWorker = null;
         this.tesseractWorker = null;
 
         this.mediaRecorder = null;
@@ -58,7 +57,7 @@ class MimicaApp {
                 this.loadFaceAPI(),
                 this.loadHandLandmarker(),
                 this.loadObjectDetector(),
-                this.setupSegmentationWorker(),
+                this.loadImageSegmenter(), // Reverted to main thread loading
                 this.setupOcr(),
                 this.populateCameraList()
             ]);
@@ -66,7 +65,7 @@ class MimicaApp {
     }
 
     checkAllReady() {
-        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && this.objectDetectorReady && this.segmentationWorkerReady && this.ocrReady && !this.animationStarted) {
+        if (this.cameraReady && this.poseLandmarkerReady && this.faceApiReady && this.handLandmarkerReady && this.objectDetectorReady && this.imageSegmenterReady && this.ocrReady && !this.animationStarted) {
             this.animationStarted = true;
             document.getElementById('loading-message').style.display = 'none';
             this.startAnimation();
@@ -252,8 +251,11 @@ class MimicaApp {
             this.poseLandmarkerReady = true;
         } catch(error) { 
             console.error('Failed to load pose models.', error);
-            this.showError('Failed to load pose models.');
-        } finally { this.checkAllReady(); }
+            this.showError('Failed to load pose models. The app may not function correctly.');
+        } finally { 
+            this.poseLandmarkerReady = true; // Mark as ready anyway to not block other models
+            this.checkAllReady();
+        }
     }
 
     async loadHandLandmarker() {
@@ -276,27 +278,17 @@ class MimicaApp {
         } catch (error) { console.error("Object Detector failed to load:", error); } finally { this.objectDetectorReady = true; this.checkAllReady(); }
     }
     
-    async setupSegmentationWorker() {
+    async loadImageSegmenter() {
+        // **FIX**: Load directly on main thread, as worker approach is problematic with MediaPipe Tasks
         try {
-            this.segmentationWorker = new Worker(new URL('./segmentation-worker.js', import.meta.url), { type: 'module' });
-            this.segmentationWorker.onmessage = (event) => {
-                if (event.data.type === 'INITIALIZED') {
-                    this.segmentationWorkerReady = true;
-                    this.checkAllReady();
-                } else if (event.data.type === 'RESULT') {
-                    this.lastSegmentationResult = event.data.result;
-                } else if (event.data.type === 'ERROR') {
-                    console.error("Segmentation worker error:", event.data.error);
-                }
-            };
-            this.segmentationWorker.postMessage({ type: 'INITIALIZE' });
-        } catch (error) {
-            console.error("Segmentation worker setup failed:", error);
-            this.segmentationWorkerReady = true; 
-            this.checkAllReady();
-        }
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
+            this.imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite', delegate: 'CPU' },
+                runningMode: 'VIDEO', outputCategoryMask: true,
+            });
+        } catch(error) { console.error("Image Segmenter failed to load:", error); } finally { this.imageSegmenterReady = true; this.checkAllReady(); }
     }
-    
+
     async setupOcr() {
         try {
             this.tesseractWorker = await Tesseract.createWorker('eng');
@@ -337,14 +329,10 @@ class MimicaApp {
                     this.lastObjectDetections = this.objectDetector.detectForVideo(this.video, startTimeMs);
                 } else { this.lastObjectDetections = null; }
                 
-                if (this.settings.segmentationEnabled && this.segmentationWorkerReady) {
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = this.video.videoWidth;
-                    tempCanvas.height = this.video.videoHeight;
-                    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-                    tempCtx.drawImage(this.video, 0, 0, tempCanvas.width, tempCanvas.height);
-                    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                    this.segmentationWorker.postMessage({ type: 'SEGMENT', imageData });
+                if (this.settings.segmentationEnabled && this.imageSegmenterReady) {
+                    this.imageSegmenter.segmentForVideo(this.video, startTimeMs, (result) => {
+                        this.lastSegmentationResult = result;
+                    });
                 } else { this.lastSegmentationResult = null; }
 
                 this.detectExpression();
@@ -386,7 +374,7 @@ class MimicaApp {
             return;
         }
         const now = performance.now();
-        if (now - this.lastOcrTime < 2000) return; // Run OCR every 2 seconds
+        if (now - this.lastOcrTime < 2000) return;
         this.lastOcrTime = now;
 
         try {
