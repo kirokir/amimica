@@ -11,32 +11,37 @@ export class PoseRenderer {
         this.colors = {
             joints: '#00ff88', bones: '#ffffff', face: '#ffaa00', torso: '#00aaff',
             leftArm: '#ff6600', rightArm: '#ff0066', leftLeg: '#66ff00', rightLeg: '#0066ff',
-            characterStroke: '#1a1a1a', hand: '#ff55aa', objectBox: '#00aaff'
+            characterStroke: '#1a1a1a', hand: '#ff55aa', objectBox: '#00aaff', ocrBox: '#f0ad4e'
         };
         
         this.segmentationColors = [
-            [0, 0, 0, 0],           // 0: background (transparent)
-            [128, 64, 128, 128],    // 1: aeroplane
-            [244, 35, 232, 128],    // 2: bicycle
-            [70, 70, 70, 128],      // 3: bird
-            [102, 102, 156, 128],   // 4: boat
-            [190, 153, 153, 128],   // 5: bottle
-            [153, 153, 153, 128],   // 6: bus
-            [250, 170, 30, 128],    // 7: car
-            [220, 220, 0, 128],     // 8: cat
-            [107, 142, 35, 128],    // 9: chair
-            [152, 251, 152, 128],   // 10: cow
-            [70, 130, 180, 128],    // 11: dining table
-            [220, 20, 60, 128],     // 12: dog
-            [255, 0, 0, 128],       // 13: horse
-            [0, 0, 142, 128],       // 14: motorbike
-            [0, 0, 70, 128],        // 15: person
-            [0, 60, 100, 128],      // 16: potted plant
-            [0, 80, 100, 128],      // 17: sheep
-            [0, 0, 230, 128],       // 18: sofa
-            [119, 11, 32, 128],     // 19: train
-            [0, 0, 142, 128]        // 20: tv
+            [0, 0, 0, 0], [128, 64, 128, 128], [244, 35, 232, 128], [70, 70, 70, 128],
+            [102, 102, 156, 128], [190, 153, 153, 128], [153, 153, 153, 128], [250, 170, 30, 128],
+            [220, 220, 0, 128], [107, 142, 35, 128], [152, 251, 152, 128], [70, 130, 180, 128],
+            [220, 20, 60, 128], [255, 0, 0, 128], [0, 0, 142, 128], [0, 0, 70, 128],
+            [0, 60, 100, 128], [0, 80, 100, 128], [0, 0, 230, 128], [119, 11, 32, 128]
         ];
+    }
+
+    drawOcrResults(ocrData, mirror) {
+        if (!ocrData || !ocrData.words || ocrData.words.length === 0) return;
+        const canvasWidth = this.ctx.canvas.width;
+
+        ocrData.words.forEach(word => {
+            const bbox = word.bbox;
+            const x = mirror ? canvasWidth - bbox.x1 : bbox.x0;
+            const y = bbox.y0;
+            const width = bbox.x1 - bbox.x0;
+            const height = bbox.y1 - bbox.y0;
+
+            this.ctx.strokeStyle = this.colors.ocrBox;
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(mirror ? x - width : x, y, width, height);
+
+            this.ctx.fillStyle = this.colors.ocrBox;
+            this.ctx.font = '16px sans-serif';
+            this.ctx.fillText(word.text, mirror ? x - width : x, y > 16 ? y - 5 : 20);
+        });
     }
 
     drawObjectDetections(detections, mirror) {
@@ -55,7 +60,7 @@ export class PoseRenderer {
 
             this.ctx.fillStyle = this.colors.objectBox;
             this.ctx.font = '14px sans-serif';
-            this.ctx.fillText(label, x, y > 10 ? y - 5 : 20);
+            this.ctx.fillText(label, x, y > 14 ? y - 5 : 20);
         });
     }
 
