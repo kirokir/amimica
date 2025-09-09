@@ -508,3 +508,15 @@ select {
     margin-top: 0.5rem;
     text-align: center;
 }
+
+
+/* --- Info Text Styles --- */
+.info-text {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background-color: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    line-height: 1.4;
+}
