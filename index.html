@@ -53,11 +53,11 @@
                 <div id="error-message" class="error-message" style="display: none;">
                     <h3>Camera Access Required</h3>
                     <p>Please allow camera access and refresh.</p>
-                    <button id="retry-camera" class="btn btn-primary">Retry Camera Access</button>
+                    <button id="retry-camera-btn" class="btn btn-primary">Retry Camera Access</button>
                 </div>
                 <div id="loading-message" class="loading-message" style="display: flex;">
                     <h3>Loading MIMICA...</h3>
-                    <p>Initializing detection models...</p>
+                    <p>Initializing camera...</p>
                 </div>
             </div>
 
@@ -65,26 +65,34 @@
                  <details class="control-section" open>
                     <summary>Config</summary>
                     <div class="control-group">
-                        <label><input type="checkbox" id="body-mode-toggle" checked> Enable Body Tracking</label>
+                        <label><input type="checkbox" id="body-mode-toggle"> Enable Body Tracking <span class="status-indicator status-not-loaded" id="body-status">(Not Loaded)</span></label>
                     </div>
                     <div class="control-group">
-                        <label><input type="checkbox" id="hand-tracking-toggle"> Enable Hand Tracking</label>
+                        <label><input type="checkbox" id="hand-tracking-toggle"> Enable Hand Tracking <span class="status-indicator status-not-loaded" id="hand-status">(Not Loaded)</span></label>
                     </div>
                      <div class="control-group">
-                        <label><input type="checkbox" id="expression-toggle"> Enable Expression Recognition</label>
+                        <label><input type="checkbox" id="expression-toggle"> Enable Expression Recognition <span class="status-indicator status-not-loaded" id="expression-status">(Not Loaded)</span></label>
                     </div>
                     <div class="control-group">
-                        <label><input type="checkbox" id="object-detection-toggle"> Enable Object Detection</label>
+                        <label><input type="checkbox" id="object-detection-toggle"> Enable Object Detection <span class="status-indicator status-not-loaded" id="object-status">(Not Loaded)</span></label>
                     </div>
                     <div class="control-group">
-                        <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation</label>
+                        <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation <span class="status-indicator status-not-loaded" id="segmentation-status">(Not Loaded)</span></label>
                     </div>
-                    <div class="control-group">
-                        <label><input type="checkbox" id="ocr-toggle"> Enable Text Recognition (OCR)</label>
+                     <div class="control-group">
+                        <label><input type="checkbox" id="ocr-toggle"> Enable Text Recognition (OCR) <span class="status-indicator status-not-loaded" id="ocr-status-indicator">(Not Loaded)</span></label>
                     </div>
                     <div class="control-group">
                         <label for="camera-select">Camera Source:</label>
                         <select id="camera-select"></select>
+                    </div>
+                </details>
+                
+                 <details class="control-section">
+                    <summary>Text Recognition (OCR)</summary>
+                    <div class="control-group">
+                        <button id="ocr-btn" class="btn btn-secondary">Scan Text on Screen</button>
+                        <div id="ocr-status-text">Status: Idle</div>
                     </div>
                 </details>
 
@@ -139,16 +147,18 @@
                         <a id="download-link-json" class="btn btn-secondary">Download Data (JSON)</a>
                     </div>
                 </div>
+                 <div class="control-group">
+                    <button id="refresh-btn" class="btn btn-secondary">Reload App (Hard Refresh)</button>
+                </div>
             </div>
         </main>
         
         <footer class="footer">
             <p>
                 <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener">
-                    Made with iaav
+                    Made with laaav
                 </a> - contributing to the world robotics and ai community.
             </p>
-            <!-- **NEW**: Link to the data renderer -->
             <p style="margin-top: 0.5rem;">
                 <a href="MIMICA( Data to Video Renderer ).html" class="btn btn-secondary">Run Data to Video Renderer</a>
             </p>
