@@ -54,9 +54,26 @@ class MimicaApp {
         if (this.cameraReady) {
             document.getElementById('loading-message').style.display = 'none';
             this.loadEnabledModels();
-            this.displaySystemInfo();
+            this.displaySystemInfo(); // Now this function exists
             this.startAnimation();
         }
+    }
+
+    // **NEW FUNCTION**: Displays system and browser info in the footer.
+    displaySystemInfo() {
+        const infoEl = document.getElementById('system-info');
+        if (!infoEl) return;
+
+        const browserInfo = navigator.userAgent || "N/A";
+        const platform = navigator.platform || "N/A";
+        const connection = navigator.connection || {};
+        const networkInfo = connection.effectiveType ? `${connection.effectiveType} (${connection.downlink} Mbps)` : "N/A";
+
+        infoEl.innerHTML = `
+            <span>OS: ${platform}</span> | 
+            <span>Network: ${networkInfo}</span> | 
+            <span>Browser: ${browserInfo.substring(0, 100)}...</span>
+        `;
     }
 
     loadSettings() {
@@ -101,9 +118,7 @@ class MimicaApp {
                 this.settings[key] = value;
                 this.saveSettings();
                 
-                if (isCheckbox) {
-                    this.loadEnabledModels();
-                } else if (key === 'resolution' || key === 'selectedCameraId') {
+                if (isCheckbox || key === 'resolution' || key === 'selectedCameraId') {
                     window.location.reload();
                 } else if (key === 'smoothing') {
                     this.smoother.setAlpha(this.settings.smoothing);
@@ -143,6 +158,7 @@ class MimicaApp {
         this.updateStatus('expression', this.models.face.loading ? 'loading' : (this.models.face.ready ? 'ready' : 'not-loaded'), this.models.face.loading ? 'Loading...' : (this.models.face.ready ? 'Ready' : 'Not Loaded'));
         this.updateStatus('object', this.models.objects.loading ? 'loading' : (this.models.objects.ready ? 'ready' : 'not-loaded'), this.models.objects.loading ? 'Loading...' : (this.models.objects.ready ? 'Ready' : 'Not Loaded'));
         this.updateStatus('segmentation', this.models.segmentation.loading ? 'loading' : (this.models.segmentation.ready ? 'ready' : 'not-loaded'), this.models.segmentation.loading ? 'Loading...' : (this.models.segmentation.ready ? 'Ready' : 'Not Loaded'));
+        this.updateStatus('ocr', this.models.ocr.loading ? 'loading' : (this.models.ocr.ready ? 'ready' : 'not-loaded'), this.models.ocr.loading ? 'Loading...' : (this.models.ocr.ready ? 'Ready' : 'Not Loaded'));
         
         const ocrStatusTextEl = document.getElementById('ocr-status-text');
         if(ocrStatusTextEl) {
@@ -415,8 +431,8 @@ class MimicaApp {
     }
 
     async detectText() {
-        if (!this.models.ocr.ready || this.isOcrRunning) {
-            if (!this.models.ocr.ready) alert("OCR model is not loaded yet. Please enable it in Config first.");
+        if (!this.settings.ocrEnabled || !this.models.ocr.ready || this.isOcrRunning) {
+            if (!this.models.ocr.ready) alert("OCR model is not loaded yet. Please enable it in Config and wait for it to be Ready.");
             return;
         }
         
@@ -497,8 +513,15 @@ class MimicaApp {
     
     showError(message) {
         const errorDiv = document.getElementById('error-message');
-        errorDiv.querySelector('p').textContent = message;
-        errorDiv.style.display = 'flex';
+        const retryBtn = document.getElementById('retry-camera-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        if (errorDiv) {
+            errorDiv.querySelector('p').textContent = message;
+            errorDiv.style.display = 'flex';
+        }
+        if (retryBtn) retryBtn.style.display = 'none'; // Hide retry button, show hard refresh
+        if (refreshBtn) refreshBtn.style.display = 'block';
+        
         document.getElementById('loading-message').style.display = 'none';
     }
 }
