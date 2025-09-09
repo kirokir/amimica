@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
-    <!-- **DEFINITIVE, FINAL CONTENT SECURITY POLICY** -->
+    <!-- Final, Corrected Content Security Policy -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com;
@@ -90,9 +90,13 @@
                     <div class="control-group">
                         <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation <span class="status-indicator status-not-loaded" id="segmentation-status">(Not Loaded)</span></label>
                     </div>
+                    <!-- **DEFINITIVE FIX**: Added the missing 'ocr-toggle' checkbox -->
+                    <div class="control-group">
+                         <label><input type="checkbox" id="ocr-toggle"> Enable Text Recognition (OCR) <span class="status-indicator status-not-loaded" id="ocr-status">(Not Loaded)</span></label>
+                    </div>
                     <div class="control-group">
                         <button id="ocr-btn" class="btn btn-secondary">Scan Text on Screen</button>
-                        <div id="ocr-status-text">Status: <span class="status-indicator status-not-loaded" id="ocr-status">(Not Loaded)</span></div>
+                        <div id="ocr-status-text">Status: Idle</div>
                     </div>
                 </details>
 
@@ -153,8 +157,8 @@
         <footer class="footer">
             <p>
                 <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener">
-                    Made with LAAAV
-                </a> - contributing to the world robotics and ai community.
+                    Made with LAAAV - by DEAR&CO
+                </a> - Contributing to the World Robotics and AI community.
             </p>
             <p style="margin-top: 0.5rem;">
                 <a href="MIMICA( Data to Video Renderer ).html" class="btn btn-secondary">Run Data to Video Renderer</a>
