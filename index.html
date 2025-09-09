@@ -15,16 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
-    <!-- **DEFINITIVE, FINAL CONTENT SECURITY POLICY** -->
-    <meta http-equiv="Content-Security-Policy" content="
-        default-src 'self';
-        script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com;
-        style-src 'self' 'unsafe-inline';
-        worker-src 'self' blob: https://cdn.jsdelivr.net;
-        connect-src 'self' data: https://cdn.jsdelivr.net https://storage.googleapis.com https://tesseract.projectnaptha.com;
-        img-src 'self' data: blob:;
-        font-src 'self' data:;
-    ">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://tesseract.projectnaptha.com; img-src 'self' data: blob:;">
 
     <!-- LIBRARIES -->
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
@@ -32,7 +23,6 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- The rest of your body content is unchanged -->
         <header class="header">
             <h1>MIMICA <span class="recording-indicator" id="recording-indicator" style="display: none;">● REC</span></h1>
             <div class="stats">
@@ -43,6 +33,7 @@
                 <span id="fps-counter">FPS: --</span>
             </div>
         </header>
+
         <main class="main-content">
             <div class="video-container" id="video-container">
                 <video id="video" autoplay muted playsinline style="display: none;"></video>
@@ -60,6 +51,7 @@
                     <p>Initializing detection models...</p>
                 </div>
             </div>
+
             <div class="controls-panel">
                  <details class="control-section" open>
                     <summary>Config</summary>
@@ -86,6 +78,7 @@
                         <select id="camera-select"></select>
                     </div>
                 </details>
+
                 <details class="control-section">
                     <summary>Details</summary>
                      <div class="control-group">
@@ -125,6 +118,7 @@
                         <button id="calibrate-btn" class="btn btn-secondary">Calibrate Pose</button>
                     </div>
                 </details>
+
                  <div class="control-group recording-section">
                     <button id="record-btn" class="btn btn-primary">Start Recording</button>
                     <label>
@@ -138,11 +132,16 @@
                 </div>
             </div>
         </main>
+        
         <footer class="footer">
             <p>
                 <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener">
-                    Made with Laav
+                    Made with LAAAV
                 </a> - contributing to the world robotics and ai community.
+            </p>
+            <!-- **NEW**: Link to the data renderer -->
+            <p style="margin-top: 0.5rem;">
+                <a href="MIMICA( Data to Video Renderer ).html" class="btn btn-secondary">Run Data to Video Renderer</a>
             </p>
         </footer>
     </div>
