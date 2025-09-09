@@ -1,0 +1,191 @@
+// segmentation-worker.js
+import { ImageSegmenter, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs";
+
+let imageSegmenter;
+let isInitialized = false;
+
+// Initialize the ImageSegmenter
+async function initialize() {
+    const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
+    imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite',
+            delegate: 'GPU' // Workers can handle GPU tasks safely off the main thread
+        },
+        runningMode: 'IMAGE', // Use IMAGE mode for single-frame processing
+        outputCategoryMask: true,
+    });
+    isInitialized = true;
+    self.postMessage({ type: 'INITIALIZED' });
+    console.log("Segmentation worker initialized successfully.");
+}
+
+// Listen for messages from the main thread
+self.onmessage = async (event) => {
+    if (event.data.type === 'INITIALIZE') {
+        await initialize();
+    } else if (event.data.type === 'SEGMENT' && isInitialized) {
+        const { imageData } = event.data;
+        const result = imageSegmenter.segment(imageData);
+        // Send the result back to the main thread
+        self.postMessage({ type: 'RESULT', result });
+    }
+};```
+
+---
+
+#### **Step 2: Update `index.html`**
+
+We will add the new Tesseract.js library and the UI controls for OCR.
+
+**Replace the entire contents** of your `index.html` file with this final version:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIMICA - Real-time Vision AI</title>
+    <meta name="description" content="Real-time pose, hand, expression, object, and text tracking with data export.">
+    <link rel="stylesheet" href="web-demo/styles.css">
+    <link rel="manifest" href="web-demo/manifest.webmanifest">
+    <meta name="theme-color" content="#1a1a1a">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MIMICA">
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com https://tesseract.projectnaptha.com; img-src 'self' data: blob:;">
+
+    <!-- LIBRARIES -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/vision_bundle.mjs"></script>
+    <script src='https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js'></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>MIMICA <span class="recording-indicator" id="recording-indicator" style="display: none;">● REC</span></h1>
+            <div class="stats">
+                <span id="ocr-display">OCR: --</span>
+                <span id="objects-display">Objects: --</span>
+                <span id="expression-display">Expression: --</span>
+                <span id="action-display">Action: --</span>
+                <span id="fps-counter">FPS: --</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="video-container" id="video-container">
+                <video id="video" autoplay muted playsinline style="display: none;"></video>
+                <canvas id="canvas"></canvas>
+                <button id="fullscreen-btn" class="fullscreen-btn">
+                    <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                </button>
+                <div id="error-message" class="error-message" style="display: none;">
+                    <h3>Camera Access Required</h3>
+                    <p>Please allow camera access and refresh.</p>
+                    <button id="retry-camera" class="btn btn-primary">Retry Camera Access</button>
+                </div>
+                <div id="loading-message" class="loading-message" style="display: flex;">
+                    <h3>Loading MIMICA...</h3>
+                    <p>Initializing detection models...</p>
+                </div>
+            </div>
+
+            <div class="controls-panel">
+                 <details class="control-section" open>
+                    <summary>Config</summary>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="body-mode-toggle" checked> Enable Body Tracking</label>
+                    </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="hand-tracking-toggle"> Enable Hand Tracking</label>
+                    </div>
+                     <div class="control-group">
+                        <label><input type="checkbox" id="expression-toggle"> Enable Expression Recognition</label>
+                    </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="object-detection-toggle"> Enable Object Detection</label>
+                    </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="segmentation-toggle"> Enable Scene Segmentation</label>
+                    </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="ocr-toggle"> Enable Text Recognition (OCR)</label>
+                    </div>
+                    <div class="control-group">
+                        <label for="camera-select">Camera Source:</label>
+                        <select id="camera-select"></select>
+                    </div>
+                </details>
+
+                <details class="control-section">
+                    <summary>Details</summary>
+                     <div class="control-group">
+                        <label for="character-mode-select">Character Mode:</label>
+                        <select id="character-mode-select">
+                            <option value="blocky">Blocky (Animated)</option>
+                            <option value="skeleton">Skeleton</option>
+                            <option value="filled">Filled</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="resolution-select">Video Resolution:</label>
+                        <select id="resolution-select">
+                            <option value="640x360">640×360 (Recommended)</option>
+                            <option value="320x240">320×240</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="smoothing-slider">Smoothing: <span id="smoothing-value">0.3</span></label>
+                        <input type="range" id="smoothing-slider" min="0" max="1" step="0.1" value="0.3">
+                    </div>
+                    <div class="control-group">
+                        <label for="fps-slider">FPS Cap: <span id="fps-value">30</span></label>
+                        <input type="range" id="fps-slider" min="10" max="60" step="5" value="30">
+                    </div>
+                    <div class="control-group">
+                        <label for="confidence-slider">Confidence Threshold: <span id="confidence-value">0.5</span></label>
+                        <input type="range" id="confidence-slider" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="mirror-toggle" checked> Mirror Live View</label>
+                    </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="ik-toggle"> Enable 2-Bone IK</label>
+                    </div>
+                    <div class="control-group">
+                        <button id="calibrate-btn" class="btn btn-secondary">Calibrate Pose</button>
+                    </div>
+                </details>
+
+                 <div class="control-group recording-section">
+                    <button id="record-btn" class="btn btn-primary">Start Recording</button>
+                    <label>
+                        <input type="checkbox" id="record-background-toggle" checked>
+                        Include Camera in Video
+                    </label>
+                    <div id="download-area" style="display: none;">
+                        <a id="download-link-video" class="btn btn-secondary">Download Video</a>
+                        <a id="download-link-json" class="btn btn-secondary">Download Data (JSON)</a>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="footer">
+            <p>
+                <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener">
+                    Made with iaav
+                </a> - contributing to the world robotics and ai community.
+            </p>
+        </footer>
+    </div>
+    
+    <script type="module" src="web-demo/src/app.js"></script>
+</body>
+</html>
