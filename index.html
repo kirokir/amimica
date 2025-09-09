@@ -15,6 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MIMICA">
     
+    <!-- Final, Corrected Content Security Policy -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com;
@@ -52,6 +53,7 @@
                 <div id="error-message" class="error-message" style="display: none;">
                     <h3>An Error Occurred</h3>
                     <p>There was an issue initializing the camera or AI models.</p>
+                    <!-- **DEFINITIVE FIX**: Corrected button ID -->
                     <button id="refresh-btn" class="btn btn-primary">Reload App (Hard Refresh)</button>
                 </div>
                 <div id="loading-message" class="loading-message" style="display: flex;">
@@ -154,14 +156,15 @@
         
         <footer class="footer">
             <p>
-                <a href="https://dearnco.is-a.dev/" target="_blank" rel="noopener">
+                <!-- **DEFINITIVE FIX**: Updated link and text -->
+                <a href="https://laaav.com/" target="_blank" rel="noopener">
                     Made with LAAAV - by DEAR&CO
                 </a> - Contributing to the World Robotics and AI community.
             </p>
             <p style="margin-top: 0.5rem;">
                 <a href="MIMICA( Data to Video Renderer ).html" class="btn btn-secondary">Run Data to Video Renderer</a>
             </p>
-            <!-- **NEW**: System Info Display Area -->
+            <!-- System Info Display Area -->
             <div id="system-info" class="system-info"></div>
         </footer>
     </div>
